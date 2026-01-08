@@ -1,0 +1,112 @@
+:root {
+  /* HSL Color Palette - Premium Dark Mode */
+  --bg-app: 240 10% 4%;       /* Approach Black */
+  --bg-card: 240 10% 8%;      /* Dark Gray */
+  --bg-panel: 240 10% 12%;    /* Lighter Gray */
+  
+  --txt-primary: 0 0% 98%;    /* White */
+  --txt-secondary: 240 5% 65%; /* Muted Gray */
+  --txt-accent: 240 5% 45%;   /* Darker Muted */
+
+  --accent-primary: 260 100% 65%; /* Electric Purple/Blue */
+  --accent-glow: 260 100% 65%;
+  
+  --border-subtle: 240 10% 15%;
+  --border-active: 240 10% 30%;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: hsl(var(--bg-app));
+  color: hsl(var(--txt-primary));
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--bg-app));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--bg-panel));
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--border-active));
+}
+
+/* Utilities */
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+.card {
+  background: hsl(var(--bg-card));
+  border: 1px solid hsl(var(--border-subtle));
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  transition: border-color 0.2s;
+}
+
+.card:hover {
+  border-color: hsl(var(--border-active));
+}
+
+.btn {
+  background: hsl(var(--accent-primary));
+  color: hsl(var(--txt-primary));
+  border: none;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.glass {
+  background: hsla(var(--bg-card), 0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid hsla(var(--border-subtle), 0.5);
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.text-muted {
+  color: hsl(var(--txt-secondary));
+}

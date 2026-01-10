@@ -1,9 +1,0 @@
-W0000 00:00:1768057107.992967 31589791 face_landmarker_graph.cc:180] Sets FaceBlendshapesGraph acceleration to xnnpack by default.
-I0000 00:00:1768057108.066951 31589791 gl_context.cc:407] GL version: 2.1 (2.1 Metal - 89.3), renderer: Apple M1 Pro
-INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
-W0000 00:00:1768057108.068341 31589792 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-W0000 00:00:1768057108.077086 31589799 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-INFO:     Started server process [54181]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)

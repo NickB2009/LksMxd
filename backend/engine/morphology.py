@@ -145,7 +145,6 @@ class MorphologyEngine:
         # Fix: Maybe measure angle against VERTICAL? 
         # For robustness, let's use the Slope difference.
         
-        # --- 4. DETAILS ---
         # Chin Prominence (Recession Proxy)
         # Fix: Ensure landmarks exist.
         try:
@@ -155,6 +154,9 @@ class MorphologyEngine:
              
         philtrum = d("subnasale", "lipTop")
         chin_philtrum_ratio = chin_h / philtrum if philtrum > 0.1 else 0.0
+
+        # Chin Taper Angle: Angle at Menton between chinLeft and chinRight
+        chin_taper = get_angle("menton", "chinLeft", "chinRight")
         
         # Canthal Tilt (Eye Slope) - Previously was using Brow Tilt!
         # Re-implement Eye Slope

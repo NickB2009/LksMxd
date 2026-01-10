@@ -10,7 +10,7 @@ app = FastAPI(title="Morphology Scout API")
 # Allow CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite default port
+    allow_origins=["*"],  # Allow all for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,10 +43,7 @@ async def analyze_face(file: UploadFile = File(...)):
         potential_report = calculate_potential(morphology_metrics)
         
         return {
-            "morphology": {
-                 "raw": morphology_metrics,
-                 # "analysis": ... could add the text classification classifications here too if ported
-            },
+            "morphology": morphology_metrics, # Return directly, no nesting
             "rarity": rarity_report,
             "marketFit": market_fit_report,
             "potential": potential_report

@@ -8,19 +8,21 @@ MARKETS = {
   "ideal_golden": {
     "description": "Scientific Perfection. Adherence to Golden Ratio & Neoclassical Canons.",
     "bounty": {
-      "phiRatio": {"mean": 1.618, "std": 0.05},    # The Golden Ratio
-      "eyeSpacingRatio": {"mean": 1.0, "std": 0.1}, # Rule of Fifths
-      "mouthNoseRatio": {"mean": 1.618, "std": 0.1},# Mouth 1.6x Nose
-      "fWHR": {"mean": 1.9, "std": 0.1} # Dimorphic ideal
+      "phiRatio": {"mean": 1.618, "std": 0.12},    # Relaxed from 0.05
+      "eyeSpacingRatio": {"mean": 1.0, "std": 0.15}, # Relaxed from 0.1
+      "mouthNoseRatio": {"mean": 1.618, "std": 0.2},
+      "fWHR": {"mean": 1.9, "std": 0.15} 
     }
   },
   "editorial": {
-    "description": "High fashion. Often values defined jaw and slight deviations.",
+    "description": "High fashion. Values extreme dimorphism, long midfaces, and unique features.",
     "bounty": {
-      "phiRatio": {"mean": 1.55, "std": 0.1},      # Often wider faces (lower ratio)
-      "jawToCheek": {"mean": 0.95, "std": 0.05},   # Strong jaw
-      "canthalTilt": {"mean": 5.0, "std": 2.0},    # Positive tilt
-      "fWHR": {"mean": 2.0, "std": 0.15}
+      "phiRatio": {"mean": 1.50, "std": 0.15},
+      "jawToCheek": {"mean": 0.92, "std": 0.08},
+      "canthalTilt": {"mean": 8.0, "std": 4.0},
+      "fWHR": {"mean": 2.2, "std": 0.25},  # Tuned for Jordan Barrett (2.26)
+      "midface_compactness": {"mean": 1.9, "std": 0.2}, 
+      "nose_ratio": {"mean": 0.8, "std": 0.15} 
     }
   },
   "commercial": {
@@ -28,7 +30,8 @@ MARKETS = {
     "bounty": {
       "phiRatio": {"mean": 1.6, "std": 0.08},
       "eyeSpacingRatio": {"mean": 1.0, "std": 0.08},
-      "jawToCheek": {"mean": 0.82, "std": 0.05}
+      "jawToCheek": {"mean": 0.82, "std": 0.05},
+      "midface_compactness": {"mean": 2.1, "std": 0.1} # Prefers compact
     }
   }
 }

@@ -78,10 +78,27 @@ class MorphologyEngine:
         return cv2.LUT(processed, table)
 
     def process_image(self, image_bytes: bytes) -> Dict[str, Any]:
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if image is None: return None
-        
+        # 1. Load with PIL to handle EXIF rotation automatically
+        try:
+            pil_image = Image.open(io.BytesIO(image_bytes))
+            pil_image = ImageOps.exif_transpose(pil_image)
+            
+            # Convert to RGB (PIL) -> BGR (OpenCV)
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+                
+            image = np.array(pil_image)
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            
+        except Exception as e:
+            # Fallback for non-image data or failures
+            print(f"PIL Load Failed: {e}, falling back to cv2 raw decode")
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if image is None:
+            raise ValueError("Could not decode image")
+            
         # Apply pre-processing for better landmark mapping
         processed_image = self._preprocess_image(image)
         
@@ -123,26 +140,49 @@ class MorphologyEngine:
         
         # --- 3. HORIZONTAL RULE OF FIFTHS ---
         # Segments: 1. Left Ear-Eye, 2. Left Eye, 3. Inter-Eye, 4. Right Eye, 5. Right Eye-Ear
-        # Proxies: We use zygoma as lateral face bounds because ears are unreliable in 2D
-        w_face = bizygoma
+        # Using Ear-to-Ear width (Sideburns area) for the full 5-part span reference
+        w_face_full = d("earLeft", "earRight") # Points 234-454 (Sideburns/Tragion)
+        w_zygoma = bizygoma # Cheekbones
+        
         w_eye_l = d("eyeLeftInner", "eyeLeftOuter")
         w_eye_r = d("eyeRightInner", "eyeRightOuter")
         w_inters = d("eyeLeftInner", "eyeRightInner")
-        # Outer segments (approximate using face width remainder)
-        w_outer_l = (bizygoma - w_eye_l - w_inters - w_eye_r) / 2 # simplified assumption of symmetry for the breakdown
         
-        # Rule of Fifths deviations (Ideal: all 5 segments roughly equal, or specific ratios)
-        # Ideally Inter-eye width = Eye Width
-        esr = w_inters / ((w_eye_l + w_eye_r)/2) # Eye Spacing Ratio
-
+        # Rule of Fifths deviations
+        # Ideally: Eye Width == Inter-Eye Width == (FaceWidth - 3*EyeWidth)/2 ??
+        # Or simply: FaceWidth = 5 * EyeWidth
+        # Moridani paper favors: Inter-canthal distance = One Eye Width.
+        esr = w_inters / ((w_eye_l + w_eye_r)/2) # Eye Spacing Ratio (~1.0 is ideal if referencing eye width)
+        
+        # Face Width Ratio: Full Face Width should be roughly 5 * Eye Width
+        avg_eye_w = (w_eye_l + w_eye_r) / 2
+        expected_face_w = avg_eye_w * 5
+        face_width_deviation = abs(w_face_full - expected_face_w) / expected_face_w
+        
+        fifths_score = 100 * max(0, 1 - (face_width_deviation * 2)) # Score based on 1/5th rule match
+        
+        # Forehead analysis (Bitemporal)
+        # 10=Trichion, but for width we use Temples (approx 21-251 or similar)
+        # Using 54 and 284 as bitemporal approximations if 21/251 unavailable in map? 
+        # Actually our LANDMARKS dict map needs extending if we use new keys.
+        # But we have 'p' dict passed in. 
+        # Note: 'd' function uses keys from 'p'. We need to ensure range is there. 
+        # Wait, the 'p' dict is constructed from self.LANDMARKS and auxiliary points. 
+        # I must add temp points to LANDMARKS first. But I cannot do that inside this function easily without
+        # editing the __init__ or creating dynamic points.
+        # Since I am editing `_calculate_metrics`, I'll use existing wide points "earLeft"/"earRight" for sideburns.
+        
         # --- 4. EYES & GAZE ---
         tilt_l = (p["eyeLeftInner"][1] - p["eyeLeftOuter"][1]) / d("eyeLeftInner", "eyeLeftOuter") * 100
         tilt_r = (p["eyeRightInner"][1] - p["eyeRightOuter"][1]) / d("eyeRightInner", "eyeRightOuter") * 100
         avg_eye_tilt = (tilt_l + tilt_r) / 2
         
+        # ... (Eye Area calc same as before)
         eye_area_l = self._poly_area([p[k] for k in ["eyeLeftInner", "eyeLeftTop", "eyeLeftTopOuter", "eyeLeftOuter", "eyeLeftBottomOuter", "eyeLeftBottom"]])
         eye_area_r = self._poly_area([p[k] for k in ["eyeRightInner", "eyeRightTop", "eyeRightTopOuter", "eyeRightOuter", "eyeRightBottomOuter", "eyeRightBottom"]])
-        eye_area_ratio = (eye_area_l + eye_area_r) / (face_h * bizygoma) * 100
+        eye_area_ratio = (eye_area_l + eye_area_r) / (face_h * w_face_full) * 100 # Using full face width now
+
+        # ... (Symmetry same as before)
 
         # --- 5. GOLDEN RATIOS (Φ) ---
         nose_w = d("noseAlareLeft", "noseAlareRight")
@@ -155,27 +195,16 @@ class MorphologyEngine:
 
         # A. Proportions (Structure)
         s_thirds = 100 - (abs(thirds["upper"]-33.3) + abs(thirds["mid"]-33.3) + abs(thirds["lower"]-33.3))
-        s_low_ratio = gaussian(lower_ratio, 2.0, 0.3) # Ideal 2.0
-        s_fifths = gaussian(esr, 1.0, 0.15) # Inter-eye = Eye width => Ratio 1.0 (ESR ~0.46 in other metric, here comparing widths directly)
+        s_low_ratio = gaussian(lower_ratio, 2.0, 0.3) 
+        s_fifths_match = fifths_score # Aligning variable names
         
-        # Standardize ESR for the report (width of inter/width of face)? 
-        # Actually keeping previous ESR def: inter / biocular for consistency with user history, but scoring based on "Eye Width Match"
-        # Let's align with Paper: Eye Separation Ratio (ESR) ideal is 0.46 of biocular, OR inter-eye distance = 1 eye width.
-        # Use simple Eye Width matching for Fifths score.
-        eye_width_avg = (w_eye_l + w_eye_r) / 2
-        fifths_deviation = abs(w_inters - eye_width_avg) / eye_width_avg
-        s_fifths_match = 100 * max(0, 1 - fifths_deviation)
-
         # B. Golden Ratio
         s_phi = gaussian(phi_ratio, 1.618, 0.1)
         s_mouth_nose = gaussian(mouth_nose_ratio, 1.618, 0.2)
 
         # C. Sexual Dimorphism (Jaw/Eye)
-        # Men: wider jaw (ratio ~0.9), Hunter eyes (positive tilt)
-        # Women: narrower jaw, neutral tilt. Assuming Neutral/Male bias for "Scout" context or Neutral?
-        # Using broadly attractive standards (Dimorphism-neutral optimal ranges)
         s_jaw = gaussian(bigonial/bizygoma, 0.85, 0.1) 
-        s_tilt = gaussian(avg_eye_tilt, 5.0, 4.0) # slightly positive is generally ideal
+        s_tilt = gaussian(avg_eye_tilt, 5.0, 4.0)
 
         # D. Symmetry
         midline_x = (p["glabella"][0] + p["menton"][0]) / 2
@@ -187,17 +216,15 @@ class MorphologyEngine:
         sym_nose = get_sym("noseAlareLeft", "noseAlareRight")
         s_symmetry = (sym_eyes + sym_jaw + sym_nose) / 3
 
-        # --- 7. AGGREGATION (Moridani Weights) ---
-        # Structure > Features
-        # "Fuzzy" aggregation:
+        # --- 7. AGGREGATION ---
         
         overall_score = (
-            0.25 * s_fifths_match +   # Horizontal Balance
-            0.20 * s_thirds +         # Vertical Balance
-            0.15 * s_phi +            # Golden Ratio (Face)
-            0.15 * s_symmetry +       # Global Symmetry
-            0.15 * s_mouth_nose +     # Feature Relations
-            0.10 * s_low_ratio        # Lower Face refinement
+            0.25 * s_fifths_match +   
+            0.20 * s_thirds +         
+            0.15 * s_phi +            
+            0.15 * s_symmetry +       
+            0.15 * s_mouth_nose +     
+            0.10 * s_low_ratio        
         )
 
         verdict = []
@@ -220,7 +247,7 @@ class MorphologyEngine:
             },
             "eyes": {
                 "canthalTilt": round(avg_eye_tilt, 1),
-                "eyeSpacingRatio": round(esr, 3), # Kept as Inter/EyeWidth for this version
+                "eyeSpacingRatio": round(esr, 3), 
                 "eyeAreaRatio": round(eye_area_ratio, 3),
                 "harmonyIndex": round(s_fifths_match, 1) # Utilizing fifths score here
             },
@@ -231,13 +258,14 @@ class MorphologyEngine:
             "jawline": {
                 "gonialAngle": round((self._get_angle(p, "gonionLeft", "zygomaLeft", "menton") + self._get_angle(p, "gonionRight", "zygomaRight", "menton"))/2, 1),
                 "jawToCheekRatio": round(bigonial/bizygoma, 2),
-                "symmetry": round(sym_jaw, 1)
+                "symmetry": round(sym_jaw, 1),
+                "lowerThirdRatio": round(lower_ratio, 2) # Added for FeatureCard
             },
             "detailed": {
                 "Rule of Fifths Match": f"{s_fifths_match:.1f}%",
                 "Lower Third (1:2)": f"{lower_ratio:.2f}",
                 "Golden Ratio Score": f"{s_phi:.1f}%",
-                "Mouth-Nose Φ": f"{mouth_nose_ratio:.2f}"
+                "Sideburns Width": f"{int(w_face_full)}px"
             }
         }
 

@@ -4,7 +4,9 @@ from mediapipe.tasks.python import vision
 import numpy as np
 import cv2
 import os
+import io
 from typing import Dict, Any
+from PIL import Image, ImageOps
 
 BaseOptions = mp.tasks.BaseOptions
 FaceLandmarker = mp.tasks.vision.FaceLandmarker

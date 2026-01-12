@@ -118,18 +118,10 @@ export default function FaceAnalyzer() {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '0.5rem',
-                            cursor: modelLoading ? 'wait' : 'pointer',
-                            opacity: modelLoading ? 0.7 : 1
+                            cursor: 'pointer'
                         }}>
-                            <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} disabled={modelLoading} />
-                            {modelLoading ? (
-                                <>
-                                    <Loader2 className="animate-spin" size={18} />
-                                    Loading Engine...
-                                </>
-                            ) : (
-                                "Select Photo"
-                            )}
+                            <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
+                            Select Photo
                         </label>
                     </div>
                 ) : (

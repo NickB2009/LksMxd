@@ -42,12 +42,6 @@ export default function FaceAnalyzer() {
         setAnalyzing(true);
 
         try {
-            const predictions = await detectLandmarks(imgRef.current);
-            if (predictions && predictions.length > 0) {
-                setLandmarks(predictions[0].keypoints);
-                drawLandmarks(predictions[0].keypoints);
-            }
-
             const blob = await fetch(image).then(r => r.blob());
             const formData = new FormData();
             formData.append('file', blob);
@@ -65,6 +59,13 @@ export default function FaceAnalyzer() {
             const data = await response.json();
             setAnalysisData(data.analysis);
 
+            // Use Backend Landmarks for perfect visualization alignment
+            if (data.analysis.landmarks) {
+                setLandmarks(data.analysis.landmarks);
+                // Slight delay to ensure canvas is ready if needed, but synchronous call usually works
+                requestAnimationFrame(() => drawLandmarks(data.analysis.landmarks));
+            }
+
         } catch (err) {
             console.error(err);
             alert(`Analysis failed: ${err.message}`);
@@ -79,7 +80,6 @@ export default function FaceAnalyzer() {
         if (!canvas || !img) return;
 
         // Visual Synchronization: Match canvas to DISPLAY dimensions
-        // This ensures dots are always visible size (not shrunk by high-res image scaling)
         const displayW = img.offsetWidth;
         const displayH = img.offsetHeight;
 
@@ -90,13 +90,14 @@ export default function FaceAnalyzer() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = 'rgba(100, 255, 218, 0.7)'; // High-vis cyan
 
-        const scaleX = displayW / img.naturalWidth;
-        const scaleY = displayH / img.naturalHeight;
-
         keypoints.forEach((pt) => {
             ctx.beginPath();
-            // Scale backend coordinates (source resolution) to visual coordinates
-            ctx.arc(pt.x * scaleX, pt.y * scaleY, 1.2, 0, 2 * Math.PI);
+            // Robust Visualization: Coordinates are [0.0, 1.0] normalized from backend
+            // Simply multiply by display dimensions for perfect alignment.
+            const x = pt.x * displayW;
+            const y = pt.y * displayH;
+
+            ctx.arc(x, y, 1.2, 0, 2 * Math.PI);
             ctx.fill();
         });
     };

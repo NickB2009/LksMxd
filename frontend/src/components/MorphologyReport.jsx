@@ -58,14 +58,22 @@ export default function MorphologyReport({ data }) {
                         {overall.verdict}
                     </p>
 
-                    <div style={{ display: 'flex', gap: '2rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem 2rem' }}>
                         <div>
-                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Symmetry Index</div>
+                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Global Symmetry</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{overall.symmetryScore}%</div>
                         </div>
                         <div>
-                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Proportion Ratio</div>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{proportions.phiRatio}</div>
+                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Canthal Tilt</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{eyes.canthalTilt}°</div>
+                        </div>
+                        <div>
+                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Gonial Angle</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{jawline.gonialAngle}°</div>
+                        </div>
+                        <div>
+                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Jaw/Cheek Ratio</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{jawline.jawToCheekRatio}</div>
                         </div>
                     </div>
                 </div>

@@ -115,8 +115,34 @@ class MorphologyEngine:
         points = {k: np.array([landmarks[v].x * w, landmarks[v].y * h]) for k, v in LANDMARKS.items()}
         
         metrics = self._calculate_metrics(points)
-        # Add Normalized Landmarks for perfect frontend scaling (0.0 - 1.0)
-        metrics["landmarks"] = [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in landmarks]
+        
+        # Add Normalized Landmarks
+        lm_list = [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in landmarks]
+        
+        # --- EXTRAPOLATE FOREHEAD (Fix for "Stopping in middle") ---
+        # Vector from Glabella (168) to Trichion (10)
+        # We add points ABOVE Trichion to ensure visual coverage of high hairlines
+        try:
+            g = landmarks[168]
+            t = landmarks[10]
+            dx = t.x - g.x
+            dy = t.y - g.y
+            
+            # Add 3 rows of points above the hairline
+            for i in range(1, 4):
+                scale = 0.5 * i
+                lm_list.append({
+                    "x": t.x + dx * scale,
+                    "y": t.y + dy * scale,
+                    "z": t.z
+                })
+                # Add side forehead points (temples) approximation
+                lm_list.append({"x": t.x + dx*scale - 0.15*i, "y": t.y + dy*scale, "z": t.z})
+                lm_list.append({"x": t.x + dx*scale + 0.15*i, "y": t.y + dy*scale, "z": t.z})
+        except:
+            pass # Safety if landmarks missing
+
+        metrics["landmarks"] = lm_list
         return metrics
 
     def _calculate_metrics(self, p: Dict[str, np.ndarray]) -> Dict[str, Any]:

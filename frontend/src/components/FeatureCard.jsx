@@ -12,12 +12,13 @@ export default function FeatureCard({ feature, data }) {
             </div>
 
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-                <ScoreGauge value={data.symmetry} ideal={100} size={120} label="Symmetry" />
+                <ScoreGauge value={data.harmonyIndex} ideal={90} size={120} label="Eye Harmony" />
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <MetricRow label="Canthal Tilt" value={`${data.canthalTilt}°`} desc={data.canthalTilt > 4 ? "Positive / Hunter" : "Neutral / Ideal"} />
                     <MetricRow label="Eye Spacing (ESR)" value={data.eyeSpacingRatio} desc="Ideal: 0.46 - 0.48" />
-                    <MetricRow label="Eye Size Ratio" value={`${(data.eyeSizeRatio * 100).toFixed(2)}%`} desc="Ideal: 1.5% - 2.0%" />
+                    <MetricRow label="Eye Area Ratio" value={`${(data.eyeAreaRatio * 100).toFixed(2)}%`} desc="Ideal: 1.5% - 2.0%" />
+                    <MetricRow label="Eye Symmetry" value={`${data.symmetry}%`} desc="Central alignment" />
                 </div>
             </div>
         </div>

@@ -42,9 +42,10 @@ export default function MorphologyReport({ data }) {
                 </div>
 
                 <div style={{ flex: '1 1 400px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                         <Sparkles size={24} color="hsl(var(--accent-primary))" />
                         <h2 style={{ margin: 0, fontSize: '1.75rem', letterSpacing: '-0.02em' }}>Aesthetic Assessment</h2>
+                        <span className="badge" style={{ fontSize: '0.7rem', opacity: 0.8 }}>CLAHE-PRECISION ACTIVE</span>
                     </div>
 
                     <p style={{

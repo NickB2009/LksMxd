@@ -23,8 +23,13 @@ LANDMARKS = {
     # Eyes
     "eyeLeftInner": 133, "eyeLeftOuter": 33,   
     "eyeLeftTop": 159, "eyeLeftBottom": 145,
+    "eyeLeftTopInner": 160, "eyeLeftTopOuter": 158,
+    "eyeLeftBottomInner": 144, "eyeLeftBottomOuter": 153,
+    
     "eyeRightInner": 362, "eyeRightOuter": 263, 
     "eyeRightTop": 386, "eyeRightBottom": 374,
+    "eyeRightTopInner": 385, "eyeRightTopOuter": 387,
+    "eyeRightBottomInner": 380, "eyeRightBottomOuter": 373,
     
     # Cheek / Jaw
     "zygomaLeft": 234, "zygomaRight": 454,
@@ -36,7 +41,7 @@ LANDMARKS = {
     "mouthLeft": 61, "mouthRight": 291,
     
     # Ears (Approx)
-    "earLeft": 234, "earRight": 454 # Using Zygoma extremes as proxies for upper linkage
+    "earLeft": 234, "earRight": 454 
 }
 
 class MorphologyEngine:
@@ -51,12 +56,34 @@ class MorphologyEngine:
         )
         self.landmarker = FaceLandmarker.create_from_options(options)
 
+    def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
+        """
+        Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) and Gamma Correction
+        to normalize lighting and improve landmark detection accuracy.
+        """
+        # 1. CLAHE in LAB color space
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        limg = cv2.merge((cl, a, b))
+        processed = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
+
+        # 2. Gamma Correction (Normalize brightness)
+        gamma = 1.2
+        invGamma = 1.0 / gamma
+        table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+        return cv2.LUT(processed, table)
+
     def process_image(self, image_bytes: bytes) -> Dict[str, Any]:
         nparr = np.frombuffer(image_bytes, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if image is None: return None
         
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        # Apply pre-processing for better landmark mapping
+        processed_image = self._preprocess_image(image)
+        
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(processed_image, cv2.COLOR_BGR2RGB))
         detection_result = self.landmarker.detect(mp_image)
         
         if not detection_result.face_landmarks:
@@ -84,22 +111,30 @@ class MorphologyEngine:
         tot = u_h + m_h + l_h if (u_h + m_h + l_h) > 0 else 1
         thirds = {"upper": u_h/tot*100, "mid": m_h/tot*100, "lower": l_h/tot*100}
 
-        # --- 3. EYES ANALYSIS ---
+        # --- 3. EYES ANALYSIS (Refined) ---
         biocular_width = d("eyeLeftOuter", "eyeRightOuter")
         inner_canthal_dist = d("eyeLeftInner", "eyeRightInner")
         esr = inner_canthal_dist / biocular_width if biocular_width > 0 else 0.46
         
-        # Canthal Tilt
+        # Stabilized Canthal Tilt (Using outer and inner points)
         tilt_l = (p["eyeLeftInner"][1] - p["eyeLeftOuter"][1]) / d("eyeLeftInner", "eyeLeftOuter") * 100
         tilt_r = (p["eyeRightInner"][1] - p["eyeRightOuter"][1]) / d("eyeRightInner", "eyeRightOuter") * 100
         avg_eye_tilt = (tilt_l + tilt_r) / 2
         
-        # Eye Size
-        eye_h_l = d("eyeLeftTop", "eyeLeftBottom")
-        eye_w_l = d("eyeLeftInner", "eyeLeftOuter")
-        eye_h_r = d("eyeRightTop", "eyeRightBottom")
-        eye_w_r = d("eyeRightInner", "eyeRightOuter")
-        eye_area_ratio = ((eye_h_l * eye_w_l) + (eye_h_r * eye_w_r)) / 2 / (face_h * bizygoma)
+        # Precise Eye Area mapping (Approximate polygon)
+        def eye_area(eye):
+            # Points: Inner, TopInner, Top, TopOuter, Outer, BottomOuter, Bottom, BottomInner
+            pts = [p[f"eye{eye}Inner"], p[f"eye{eye}TopInner"], p[f"eye{eye}Top"], 
+                   p[f"eye{eye}TopOuter"], p[f"eye{eye}Outer"], p[f"eye{eye}BottomOuter"], 
+                   p[f"eye{eye}Bottom"], p[f"eye{eye}BottomInner"]]
+            # Shoelace formula for area
+            x = [pt[0] for pt in pts]
+            y = [pt[1] for pt in pts]
+            return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+        eye_l_area = eye_area("Left")
+        eye_r_area = eye_area("Right")
+        eye_area_ratio = (eye_l_area + eye_r_area) / (face_h * bizygoma)
 
         # Eye Symmetry
         eye_sym = 100 - abs(tilt_l - tilt_r) * 2
@@ -132,25 +167,27 @@ class MorphologyEngine:
         
         jaw_sym = 100 - abs(angle_l - angle_r) * 2
 
-        # --- 6. HARMONY & OVERALL ---
-        # Symmetry index (Yaw-adaptive logic simplified for cleaner return)
-        sym_score = (eye_sym + nose_sym + jaw_sym) / 3
+        # --- 6. HARMONY & OVERALL (Recalibrated based on research paper) ---
+        # Symmetry index
+        sym_score = (eye_sym * 0.4 + nose_sym * 0.3 + jaw_sym * 0.3) 
         
-        # Harmony score: Weighted sum of deviations from "ideal"
-        # 1. Phi Ratio (Ideal 1.618)
-        phi_score = 100 * np.exp(-0.5 * ((phi_ratio - 1.618) / 0.1)**2)
-        # 2. ESR (Ideal 0.47)
-        esr_score = 100 * np.exp(-0.5 * ((esr - 0.47) / 0.03)**2)
-        # 3. fWHR (Ideal 1.9)
-        fwhr_score = 100 * np.exp(-0.5 * ((fwhr - 1.9) / 0.15)**2)
-        # 4. Thirds Balance (Ideal 33/33/33)
+        # Feature-specific scores (following Part-Based approach)
+        phi_score = 100 * np.exp(-0.5 * ((phi_ratio - 1.618) / 0.08)**2)
+        esr_score = 100 * np.exp(-0.5 * ((esr - 0.47) / 0.025)**2)
+        fwhr_score = 100 * np.exp(-0.5 * ((fwhr - 1.9) / 0.12)**2)
         thirds_score = 100 - (abs(thirds["upper"]-33.3) + abs(thirds["mid"]-33.3) + abs(thirds["lower"]-33.3))
         
-        harmony_score = (phi_score*0.2 + esr_score*0.2 + fwhr_score*0.2 + thirds_score*0.2 + sym_score*0.2)
+        # Heavily weight the Eye area (primary predictor)
+        eye_harmony = (esr_score * 0.7 + eye_sym * 0.3)
+        
+        # Final Harmony calculation with increased focus on Eye Harmony and Symmetry
+        harmony_score = (eye_harmony * 0.35 + sym_score * 0.25 + phi_score * 0.15 + fwhr_score * 0.15 + thirds_score * 0.1)
 
         verdict = []
-        if harmony_score > 85: verdict.append("High Aesthetic Harmony.")
-        if sym_score > 94: verdict.append("Exceptional Symmetry.")
+        if harmony_score > 88: verdict.append("High Aesthetic Harmony.")
+        elif harmony_score > 80: verdict.append("Good facial balance.")
+        
+        if sym_score > 95: verdict.append("Exceptional Symmetry.")
         if gonial_avg < 125: verdict.append("Strongly defined jawline.")
         if nose_ratio > 1.6: verdict.append("Refined nasal proportions.")
 
@@ -168,7 +205,8 @@ class MorphologyEngine:
             "eyes": {
                 "canthalTilt": round(avg_eye_tilt, 1),
                 "eyeSpacingRatio": round(esr, 3),
-                "eyeSizeRatio": round(eye_area_ratio, 4),
+                "eyeAreaRatio": round(eye_area_ratio, 5),
+                "harmonyIndex": round(eye_harmony, 1),
                 "symmetry": round(eye_sym, 1)
             },
             "nose": {
@@ -184,9 +222,9 @@ class MorphologyEngine:
             },
             "detailed": {
                 "Symmetry Index": f"{sym_score:.1f}%",
+                "Eye Harmony": f"{eye_harmony:.1f}%",
                 "Gonial Angle": f"{gonial_avg:.1f}°",
-                "Face Height": f"{int(face_h)}px",
-                "Bizygomatic Width": f"{int(bizygoma)}px"
+                "Face Height": f"{int(face_h)}px"
             }
         }
 

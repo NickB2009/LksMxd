@@ -8,8 +8,9 @@ lsof -ti:5173 | xargs kill -9 2>/dev/null
 # Start Backend
 echo "📈 Starting Python Analysis Engine..."
 cd backend
-source ../.venv/bin/activate
-nohup python main.py > ../backend.log 2>&1 &
+# Use the correct venv path
+source ../venv/bin/activate
+nohup python3 main.py > ../backend.log 2>&1 &
 BACKEND_PID=$!
 echo "   Backend running (PID: $BACKEND_PID)"
 cd ..

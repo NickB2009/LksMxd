@@ -2,13 +2,15 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from engine.morphology import MorphologyEngine
 import uvicorn
+import os
+import sys
 
 app = FastAPI(title="Morphology Scout API")
 
-# Allow CORS for frontend
+# ... (CORS middleware same as before)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all for development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,6 +22,14 @@ morphology_engine = MorphologyEngine()
 @app.get("/")
 def read_root():
     return {"status": "online", "service": "Morphology Scout Engine"}
+
+@app.post("/restart")
+def restart_engine():
+    """
+    Restarts the backend process.
+    """
+    print("🔄 Restarting Morphology Engine...")
+    os.execv(sys.executable, ['python3'] + sys.argv)
 
 @app.post("/analyze")
 async def analyze_face(file: UploadFile = File(...)):

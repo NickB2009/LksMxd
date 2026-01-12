@@ -110,7 +110,7 @@ export default function MorphologyReport({ data }) {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                 <Layout size={24} color="hsl(var(--accent-primary))" />
-                                <h3 style={{ margin: 0 }}>Neoclassical Proportions</h3>
+                                <h3 style={{ margin: 0 }}>Scientific Proportions</h3>
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
@@ -120,9 +120,19 @@ export default function MorphologyReport({ data }) {
                                     <div style={{ fontSize: '0.8rem', color: 'hsl(var(--accent-primary))' }}>Ideal: 1.618</div>
                                 </div>
                                 <div className="card" style={{ background: 'hsla(var(--bg-panel), 0.5)', padding: '1.5rem' }}>
+                                    <div className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Rule of Fifths Match</div>
+                                    <div style={{ fontSize: '2rem', fontWeight: 800 }}>{proportions.fifthsScore}%</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'hsl(var(--accent-primary))' }}>Based on Eye Width</div>
+                                </div>
+                                <div className="card" style={{ background: 'hsla(var(--bg-panel), 0.5)', padding: '1.5rem' }}>
                                     <div className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>fWHR (Compactness)</div>
                                     <div style={{ fontSize: '2rem', fontWeight: 800 }}>{proportions.fWHR}</div>
                                     <div style={{ fontSize: '0.8rem', color: 'hsl(var(--accent-primary))' }}>Ideal: 1.8 - 2.0</div>
+                                </div>
+                                <div className="card" style={{ background: 'hsla(var(--bg-panel), 0.5)', padding: '1.5rem' }}>
+                                    <div className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Lower Third (Lip:Chin)</div>
+                                    <div style={{ fontSize: '2rem', fontWeight: 800 }}>{proportions.lowerThirdRatio}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'hsl(var(--accent-primary))' }}>Ideal: 2.0 (Moridani)</div>
                                 </div>
                             </div>
 

@@ -39,7 +39,9 @@ LANDMARKS = {
     # Nose/Mouth
     "noseAlareLeft": 129, "noseAlareRight": 358,
     "mouthLeft": 61, "mouthRight": 291,
-    
+    "lipTop": 0, "lipBottom": 17, # Basic height
+    "lipUpperInner": 13, "lipLowerInner": 14, # Inner height
+
     # Ears (Approx)
     "earLeft": 234, "earRight": 454 
 }
@@ -104,127 +106,148 @@ class MorphologyEngine:
         phi_ratio = face_h / bizygoma if bizygoma > 0 else 1.6
         fwhr = bizygoma / d("glabella", "lipTop") if d("glabella", "lipTop") > 0 else 1.9
 
-        # --- 2. FACIAL THIRDS ---
+        # --- 2. VERTICAL THIRDS (Moridani: Trichion-Glabella-Subnasale-Menton) ---
         u_h = d("trichion", "glabella")
         m_h = d("glabella", "subnasale")
         l_h = d("subnasale", "menton")
-        tot = u_h + m_h + l_h if (u_h + m_h + l_h) > 0 else 1
-        thirds = {"upper": u_h/tot*100, "mid": m_h/tot*100, "lower": l_h/tot*100}
-
-        # --- 3. EYES ANALYSIS (Refined) ---
-        biocular_width = d("eyeLeftOuter", "eyeRightOuter")
-        inner_canthal_dist = d("eyeLeftInner", "eyeRightInner")
-        esr = inner_canthal_dist / biocular_width if biocular_width > 0 else 0.46
+        tot_h = u_h + m_h + l_h
+        thirds = {"upper": u_h/tot_h*100, "mid": m_h/tot_h*100, "lower": l_h/tot_h*100}
         
-        # Stabilized Canthal Tilt (Using outer and inner points)
+        # Lower Third Subdivision (Ideal 1:2 ratio: Subnasale-Stomion : Stomion-Menton)
+        # using lipTop as reliable 'stomion' approx for closed mouth
+        lower_upper = d("subnasale", "lipTop")
+        lower_lower = d("lipBottom", "menton") 
+        # Note: paper often uses 'stomion' (mouth center). We use lipTop/Bottom to define mass.
+        # Adjusted: Subnasale to Lip Separation vs Lip Separation to Menton
+        lower_ratio = lower_lower / lower_upper if lower_upper > 0 else 2.0
+        
+        # --- 3. HORIZONTAL RULE OF FIFTHS ---
+        # Segments: 1. Left Ear-Eye, 2. Left Eye, 3. Inter-Eye, 4. Right Eye, 5. Right Eye-Ear
+        # Proxies: We use zygoma as lateral face bounds because ears are unreliable in 2D
+        w_face = bizygoma
+        w_eye_l = d("eyeLeftInner", "eyeLeftOuter")
+        w_eye_r = d("eyeRightInner", "eyeRightOuter")
+        w_inters = d("eyeLeftInner", "eyeRightInner")
+        # Outer segments (approximate using face width remainder)
+        w_outer_l = (bizygoma - w_eye_l - w_inters - w_eye_r) / 2 # simplified assumption of symmetry for the breakdown
+        
+        # Rule of Fifths deviations (Ideal: all 5 segments roughly equal, or specific ratios)
+        # Ideally Inter-eye width = Eye Width
+        esr = w_inters / ((w_eye_l + w_eye_r)/2) # Eye Spacing Ratio
+
+        # --- 4. EYES & GAZE ---
         tilt_l = (p["eyeLeftInner"][1] - p["eyeLeftOuter"][1]) / d("eyeLeftInner", "eyeLeftOuter") * 100
         tilt_r = (p["eyeRightInner"][1] - p["eyeRightOuter"][1]) / d("eyeRightInner", "eyeRightOuter") * 100
         avg_eye_tilt = (tilt_l + tilt_r) / 2
         
-        # Precise Eye Area mapping (Approximate polygon)
-        def eye_area(eye):
-            # Points: Inner, TopInner, Top, TopOuter, Outer, BottomOuter, Bottom, BottomInner
-            pts = [p[f"eye{eye}Inner"], p[f"eye{eye}TopInner"], p[f"eye{eye}Top"], 
-                   p[f"eye{eye}TopOuter"], p[f"eye{eye}Outer"], p[f"eye{eye}BottomOuter"], 
-                   p[f"eye{eye}Bottom"], p[f"eye{eye}BottomInner"]]
-            # Shoelace formula for area
-            x = [pt[0] for pt in pts]
-            y = [pt[1] for pt in pts]
-            return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+        eye_area_l = self._poly_area([p[k] for k in ["eyeLeftInner", "eyeLeftTop", "eyeLeftTopOuter", "eyeLeftOuter", "eyeLeftBottomOuter", "eyeLeftBottom"]])
+        eye_area_r = self._poly_area([p[k] for k in ["eyeRightInner", "eyeRightTop", "eyeRightTopOuter", "eyeRightOuter", "eyeRightBottomOuter", "eyeRightBottom"]])
+        eye_area_ratio = (eye_area_l + eye_area_r) / (face_h * bizygoma) * 100
 
-        eye_l_area = eye_area("Left")
-        eye_r_area = eye_area("Right")
-        eye_area_ratio = (eye_l_area + eye_r_area) / (face_h * bizygoma)
-
-        # Eye Symmetry
-        eye_sym = 100 - abs(tilt_l - tilt_r) * 2
-
-        # --- 4. NOSE ANALYSIS ---
-        nose_l = d("nasion", "subnasale")
+        # --- 5. GOLDEN RATIOS (Φ) ---
         nose_w = d("noseAlareLeft", "noseAlareRight")
-        nose_ratio = nose_l / nose_w if nose_w > 0 else 1.5
-        nose_to_face = nose_w / bizygoma if bizygoma > 0 else 0.25
-        
-        # Nose Symmetry
-        midline_x = (p["nasion"][0] + p["menton"][0]) / 2
-        nose_sym = 100 - abs(abs(p["noseAlareLeft"][0] - midline_x) - abs(p["noseAlareRight"][0] - midline_x)) / nose_w * 100
+        mouth_w = d("mouthLeft", "mouthRight")
+        mouth_nose_ratio = mouth_w / nose_w if nose_w > 0 else 1.618
 
-        # --- 5. JAWLINE & CHIN ---
-        def get_angle(center, p1, p2):
-            v1 = p[p1] - p[center]
-            v2 = p[p2] - p[center]
-            cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-            return np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
+        # --- 6. SCORING (Fuzzy Inference Simulation) ---
+        def gaussian(x, mu, sigma):
+            return 100 * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
-        angle_l = get_angle("gonionLeft", "zygomaLeft", "menton")
-        angle_r = get_angle("gonionRight", "zygomaRight", "menton")
-        gonial_avg = (angle_l + angle_r) / 2
+        # A. Proportions (Structure)
+        s_thirds = 100 - (abs(thirds["upper"]-33.3) + abs(thirds["mid"]-33.3) + abs(thirds["lower"]-33.3))
+        s_low_ratio = gaussian(lower_ratio, 2.0, 0.3) # Ideal 2.0
+        s_fifths = gaussian(esr, 1.0, 0.15) # Inter-eye = Eye width => Ratio 1.0 (ESR ~0.46 in other metric, here comparing widths directly)
         
-        jaw_to_cheek = bigonial / bizygoma
-        chin_h = d("menton", "lipLowerTop")
-        philtrum = d("subnasale", "lipTop")
-        chin_phil_ratio = chin_h / philtrum if philtrum > 0 else 2.0
-        
-        jaw_sym = 100 - abs(angle_l - angle_r) * 2
+        # Standardize ESR for the report (width of inter/width of face)? 
+        # Actually keeping previous ESR def: inter / biocular for consistency with user history, but scoring based on "Eye Width Match"
+        # Let's align with Paper: Eye Separation Ratio (ESR) ideal is 0.46 of biocular, OR inter-eye distance = 1 eye width.
+        # Use simple Eye Width matching for Fifths score.
+        eye_width_avg = (w_eye_l + w_eye_r) / 2
+        fifths_deviation = abs(w_inters - eye_width_avg) / eye_width_avg
+        s_fifths_match = 100 * max(0, 1 - fifths_deviation)
 
-        # --- 6. HARMONY & OVERALL (Recalibrated based on research paper) ---
-        # Symmetry index
-        sym_score = (eye_sym * 0.4 + nose_sym * 0.3 + jaw_sym * 0.3) 
+        # B. Golden Ratio
+        s_phi = gaussian(phi_ratio, 1.618, 0.1)
+        s_mouth_nose = gaussian(mouth_nose_ratio, 1.618, 0.2)
+
+        # C. Sexual Dimorphism (Jaw/Eye)
+        # Men: wider jaw (ratio ~0.9), Hunter eyes (positive tilt)
+        # Women: narrower jaw, neutral tilt. Assuming Neutral/Male bias for "Scout" context or Neutral?
+        # Using broadly attractive standards (Dimorphism-neutral optimal ranges)
+        s_jaw = gaussian(bigonial/bizygoma, 0.85, 0.1) 
+        s_tilt = gaussian(avg_eye_tilt, 5.0, 4.0) # slightly positive is generally ideal
+
+        # D. Symmetry
+        midline_x = (p["glabella"][0] + p["menton"][0]) / 2
+        def get_sym(kL, kR): 
+            return 100 - (abs(abs(p[kL][0]-midline_x) - abs(p[kR][0]-midline_x)) / bizygoma * 500)
         
-        # Feature-specific scores (following Part-Based approach)
-        phi_score = 100 * np.exp(-0.5 * ((phi_ratio - 1.618) / 0.08)**2)
-        esr_score = 100 * np.exp(-0.5 * ((esr - 0.47) / 0.025)**2)
-        fwhr_score = 100 * np.exp(-0.5 * ((fwhr - 1.9) / 0.12)**2)
-        thirds_score = 100 - (abs(thirds["upper"]-33.3) + abs(thirds["mid"]-33.3) + abs(thirds["lower"]-33.3))
+        sym_eyes = get_sym("eyeLeftOuter", "eyeRightOuter")
+        sym_jaw = get_sym("gonionLeft", "gonionRight")
+        sym_nose = get_sym("noseAlareLeft", "noseAlareRight")
+        s_symmetry = (sym_eyes + sym_jaw + sym_nose) / 3
+
+        # --- 7. AGGREGATION (Moridani Weights) ---
+        # Structure > Features
+        # "Fuzzy" aggregation:
         
-        # Heavily weight the Eye area (primary predictor)
-        eye_harmony = (esr_score * 0.7 + eye_sym * 0.3)
-        
-        # Final Harmony calculation with increased focus on Eye Harmony and Symmetry
-        harmony_score = (eye_harmony * 0.35 + sym_score * 0.25 + phi_score * 0.15 + fwhr_score * 0.15 + thirds_score * 0.1)
+        overall_score = (
+            0.25 * s_fifths_match +   # Horizontal Balance
+            0.20 * s_thirds +         # Vertical Balance
+            0.15 * s_phi +            # Golden Ratio (Face)
+            0.15 * s_symmetry +       # Global Symmetry
+            0.15 * s_mouth_nose +     # Feature Relations
+            0.10 * s_low_ratio        # Lower Face refinement
+        )
 
         verdict = []
-        if harmony_score > 88: verdict.append("High Aesthetic Harmony.")
-        elif harmony_score > 80: verdict.append("Good facial balance.")
-        
-        if sym_score > 95: verdict.append("Exceptional Symmetry.")
-        if gonial_avg < 125: verdict.append("Strongly defined jawline.")
-        if nose_ratio > 1.6: verdict.append("Refined nasal proportions.")
+        if overall_score > 85: verdict.append("Excellent aesthetic harmony.")
+        elif overall_score > 75: verdict.append("Strong facial structure.")
+        if s_fifths_match > 90: verdict.append("Ideal horizontal proportions (Rule of Fifths).")
+        if lower_ratio > 1.8 and lower_ratio < 2.2: verdict.append("Perfect lower facial third (1:2).")
 
         return {
             "overall": {
-                "harmonyScore": round(harmony_score, 1),
-                "symmetryScore": round(sym_score, 1),
+                "harmonyScore": round(overall_score, 1),
+                "symmetryScore": round(s_symmetry, 1),
                 "verdict": " ".join(verdict)
             },
             "proportions": {
                 "phiRatio": round(phi_ratio, 3),
-                "fWHR": round(fwhr, 2),
-                "thirds": {k: round(v, 1) for k, v in thirds.items()}
+                "fifthsScore": round(s_fifths_match, 1),
+                "thirds": {k: round(v, 1) for k, v in thirds.items()},
+                "lowerThirdRatio": round(lower_ratio, 2)
             },
             "eyes": {
                 "canthalTilt": round(avg_eye_tilt, 1),
-                "eyeSpacingRatio": round(esr, 3),
-                "eyeAreaRatio": round(eye_area_ratio, 5),
-                "harmonyIndex": round(eye_harmony, 1),
-                "symmetry": round(eye_sym, 1)
+                "eyeSpacingRatio": round(esr, 3), # Kept as Inter/EyeWidth for this version
+                "eyeAreaRatio": round(eye_area_ratio, 3),
+                "harmonyIndex": round(s_fifths_match, 1) # Utilizing fifths score here
             },
             "nose": {
-                "noseRatio": round(nose_ratio, 2),
-                "noseToFaceWidth": round(nose_to_face, 3),
-                "symmetry": round(nose_sym, 1)
+                "mouthNoseRatio": round(mouth_nose_ratio, 2),
+                "score": round(s_mouth_nose, 1)
             },
             "jawline": {
-                "gonialAngle": round(gonial_avg, 1),
-                "jawToCheekRatio": round(jaw_to_cheek, 2),
-                "chinPhiltrumRatio": round(chin_phil_ratio, 2),
-                "symmetry": round(jaw_sym, 1)
+                "gonialAngle": round((self._get_angle(p, "gonionLeft", "zygomaLeft", "menton") + self._get_angle(p, "gonionRight", "zygomaRight", "menton"))/2, 1),
+                "jawToCheekRatio": round(bigonial/bizygoma, 2),
+                "symmetry": round(sym_jaw, 1)
             },
             "detailed": {
-                "Symmetry Index": f"{sym_score:.1f}%",
-                "Eye Harmony": f"{eye_harmony:.1f}%",
-                "Gonial Angle": f"{gonial_avg:.1f}°",
-                "Face Height": f"{int(face_h)}px"
+                "Rule of Fifths Match": f"{s_fifths_match:.1f}%",
+                "Lower Third (1:2)": f"{lower_ratio:.2f}",
+                "Golden Ratio Score": f"{s_phi:.1f}%",
+                "Mouth-Nose Φ": f"{mouth_nose_ratio:.2f}"
             }
         }
+
+    def _poly_area(self, pts):
+        x = [pt[0] for pt in pts]
+        y = [pt[1] for pt in pts]
+        return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+    def _get_angle(self, p, center, p1, p2):
+        v1 = p[p1] - p[center]
+        v2 = p[p2] - p[center]
+        return np.degrees(np.arccos(np.clip(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)), -1.0, 1.0)))
 

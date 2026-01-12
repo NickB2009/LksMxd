@@ -78,16 +78,25 @@ export default function FaceAnalyzer() {
         const img = imgRef.current;
         if (!canvas || !img) return;
 
-        canvas.width = img.width;
-        canvas.height = img.height;
+        // Visual Synchronization: Match canvas to DISPLAY dimensions
+        // This ensures dots are always visible size (not shrunk by high-res image scaling)
+        const displayW = img.offsetWidth;
+        const displayH = img.offsetHeight;
+
+        canvas.width = displayW;
+        canvas.height = displayH;
 
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.fillStyle = 'rgba(100, 255, 218, 0.7)'; // High-vis cyan
+
+        const scaleX = displayW / img.naturalWidth;
+        const scaleY = displayH / img.naturalHeight;
 
         keypoints.forEach((pt) => {
             ctx.beginPath();
-            ctx.arc(pt.x, pt.y, 1, 0, 2 * Math.PI);
+            // Scale backend coordinates (source resolution) to visual coordinates
+            ctx.arc(pt.x * scaleX, pt.y * scaleY, 1.2, 0, 2 * Math.PI);
             ctx.fill();
         });
     };
@@ -136,18 +145,43 @@ export default function FaceAnalyzer() {
                         </label>
                     </div>
                 ) : (
-                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        <div style={{ position: 'relative', borderRadius: 'var(--radius-md) var(--radius-md) 0 0', overflow: 'hidden', background: '#000', lineHeight: 0 }}>
+                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+
+                        {/* 
+                            Container - display: inline-block ensures the div shrinks to fit the image exactly.
+                            Position relative establishes the coordinate context for the absolute canvas.
+                        */}
+                        <div style={{
+                            position: 'relative',
+                            display: 'inline-block',
+                            borderRadius: 'var(--radius-md)',
+                            overflow: 'hidden',
+                            lineHeight: 0,
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                        }}>
                             <img
                                 ref={imgRef}
                                 src={image}
                                 alt="Analysis Target"
-                                style={{ width: '100%', maxHeight: '600px', objectFit: 'contain', display: 'block' }}
+                                style={{
+                                    maxWidth: '100%',
+                                    maxHeight: '600px',
+                                    display: 'block'
+                                    // No width/height forced here, let it render naturally constrained by max-
+                                }}
                                 onLoad={() => runAnalysis()}
                             />
+                            {/* Canvas overlays perfectly because container matches image size */}
                             <canvas
                                 ref={canvasRef}
-                                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+                                style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    pointerEvents: 'none'
+                                }}
                             />
 
                             {analyzing && (

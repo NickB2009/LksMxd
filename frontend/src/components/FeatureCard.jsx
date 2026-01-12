@@ -57,6 +57,7 @@ export default function FeatureCard({ feature, data }) {
                     <MetricRow label="Gonial Angle" value={`${data.gonialAngle}°`} desc={data.gonialAngle < 125 ? "Strong / Masculine" : "Balanced"} />
                     <MetricRow label="Jaw-to-Cheek Ratio" value={data.jawToCheekRatio} desc="Ideal: 0.85 - 0.95" />
                     <MetricRow label="Chin verticality" value={data.chinPhiltrumRatio} desc="Ideal: 2.0 - 2.5" />
+                    <MetricRow label="Lower Third Ratio" value={data.lowerThirdRatio ? data.lowerThirdRatio : "N/A"} desc="Ideal: 2.0 (Moridani)" />
                 </div>
             </div>
         </div>

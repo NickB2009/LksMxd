@@ -33,6 +33,25 @@ MARKETS = {
       "jawToCheek": {"mean": 0.82, "std": 0.05},
       "midface_compactness": {"mean": 2.1, "std": 0.1} # Prefers compact
     }
+  },
+  "psl_god": {
+    "description": "The internet's 'Gigachad' ideal. Maximum dimorphism and dominance.",
+    "bounty": {
+      "fWHR": {"mean": 2.1, "std": 0.15}, 
+      "jawToCheek": {"mean": 0.95, "std": 0.05}, # Nearly 1:1 jaw/cheek
+      "canthalTilt": {"mean": 6.0, "std": 3.0}, # Positive tilt
+      "midface_compactness": {"mean": 1.9, "std": 0.1}, # Short midface
+      "nose_ratio": {"mean": 0.8, "std": 0.1} # Narrow nose
+    }
+  },
+  "slayer": {
+    "description": "High harmony + Low inhibition features. 'Pretty Boy' with edge.",
+    "bounty": {
+      "phiRatio": {"mean": 1.618, "std": 0.05}, # Perfect ratios
+      "esr": {"mean": 0.47, "std": 0.02}, # Ideal Eye Separation
+      "canthalTilt": {"mean": 5.0, "std": 2.0},
+      "lower_third_ratio": {"mean": 0.35, "std": 0.02} # Strong chin dominance
+    }
   }
 }
 

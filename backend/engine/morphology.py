@@ -13,7 +13,7 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 
 LANDMARKS = {
     # Vertical Midline
-    "trichion": 10, "glabella": 168, "nasion": 6, "noseTip": 1, "subnasale": 0, 
+    "trichion": 10, "glabella": 168, "nasion": 6, "noseTip": 1, "subnasale": 164, 
     "lipTop": 0, "lipUpperBottom": 13, "lipLowerTop": 14, "menton": 152,
     
     # Brows
@@ -140,6 +140,57 @@ class MorphologyEngine:
         angle_jaw_r = get_angle("gonionRight", "zygomaRight", "menton")
         gonial_angle_avg = (angle_jaw_l + angle_jaw_r) / 2
         
+        # --- PSL / AESTHETIC SPECS ---
+        # 1. Eye Separation Ratio (ESR): Inner Canthal Distance / Bi-Ocular Width
+        # Bi-Ocular Width = Dist(LeftOuter, RightOuter)
+        # Inner Distance = Dist(LeftInner, RightInner)
+        # Ideal men: ~0.46-0.48? Or just use raw ratio.
+        # Standard: ESD / BiZygoma is also used.
+        # Let's use: InnerDist / OuterDist (Bi-ocular width not bizygoma)
+        biocular_width = d("eyeLeftOuter", "eyeRightOuter")
+        inner_canthal_dist = d("eyeLeftInner", "eyeRightInner")
+        esr = inner_canthal_dist / biocular_width
+        
+        # 2. Midface Ratio (Compactness)
+        # IPD (Inter-Pupillary Distance) / Midface Height
+        # Pupil approx = Center of Eye
+        pupil_l = (p["eyeLeftTop"] + p["eyeLeftBottom"] + p["eyeLeftInner"] + p["eyeLeftOuter"]) / 4
+        pupil_r = (p["eyeRightTop"] + p["eyeRightBottom"] + p["eyeRightInner"] + p["eyeRightOuter"]) / 4
+        ipd = np.linalg.norm(pupil_l - pupil_r)
+        midface_height = d("glabella", "subnasale") # Using Glabella-Subnasale as 'functional midface'
+        midface_ratio_psl = ipd / midface_height if midface_height > 0 else 1.0
+
+        # 3. Lower Third Dominance
+        lower_third_h = d("subnasale", "menton")
+        total_face_h = d("trichion", "menton")
+        lower_third_ratio = lower_third_h / total_face_h if total_face_h > 0 else 0.33
+        
+        # --- RESEARCH-BACKED METRICS (Morphometric Analysis) ---
+        # 4. Eye Size Ratio - Research shows larger eyes correlate with attractiveness
+        # Calculate eye area as height * width
+        eye_height_l = d("eyeLeftTop", "eyeLeftBottom")
+        eye_width_l = d("eyeLeftInner", "eyeLeftOuter")
+        eye_height_r = d("eyeRightTop", "eyeRightBottom")
+        eye_width_r = d("eyeRightInner", "eyeRightOuter")
+        
+        avg_eye_area = ((eye_height_l * eye_width_l) + (eye_height_r * eye_width_r)) / 2
+        face_area = face_h * bizygoma
+        eye_size_ratio = avg_eye_area / face_area if face_area > 0 else 0.015
+        # Ideal: 0.015-0.020 (1.5-2.0% of face area)
+        
+        # 5. Nose Length-to-Width - "Long and narrow" is ideal per research
+        nose_length = d("nasion", "subnasale")
+        nose_width = d("noseAlareLeft", "noseAlareRight")
+        nose_lw_ratio = nose_length / nose_width if nose_width > 0 else 1.5
+        # Ideal: >1.5 (longer/narrower nose)
+        
+        # 6. Brow Position - "Raised eyebrows" are key attractiveness factor
+        brow_eye_dist_l = d("browLeftInner", "eyeLeftTop")
+        brow_eye_dist_r = d("browRightInner", "eyeRightTop")
+        avg_brow_dist = (brow_eye_dist_l + brow_eye_dist_r) / 2
+        brow_position = avg_brow_dist / face_h if face_h > 0 else 0.05
+        # Normalized by face height - higher values = more raised brows
+        
         # Calibration: If Zygoma is "out" and Menton is "down", angle should be ~120.
         # If result is 143, Ramus/Body are obtuse.
         # Fix: Maybe measure angle against VERTICAL? 
@@ -214,5 +265,24 @@ class MorphologyEngine:
             },
             
             "verdict": " ".join(verdict),
-            "raw": {"bizygomatic": bizygoma, "bigonial": bigonial}
+            "raw": {"bizygomatic": bizygoma, "bigonial": bigonial},
+            
+            # Additional top-level keys for rarity/market_fit engines
+            "facialIndex": round(face_h / bizygoma, 2), # Alias for phiRatio
+            "midFaceRatio": round(m / l, 2) if l > 0 else 1.0,
+            "midface_compactness": round(bizygoma / m, 2) if m > 0 else 2.0,
+            "nose_ratio": round(d("noseAlareLeft", "noseAlareRight") / m, 2) if m > 0 else 0.8,
+            
+            # PSL Specifics
+            "psl": {
+                "esr": round(esr, 3),
+                "midface_ratio_psl": round(midface_ratio_psl, 2),
+                "lower_third_ratio": round(lower_third_ratio, 3),
+                "fwhr_psl": round(fwhr, 2), # Same as standard
+                "ipd_to_face_width": round(ipd / bizygoma, 2),
+                # Research-backed additions
+                "eye_size_ratio": round(eye_size_ratio, 4),
+                "nose_lw_ratio": round(nose_lw_ratio, 2),
+                "brow_position": round(brow_position, 3)
+            }
         }

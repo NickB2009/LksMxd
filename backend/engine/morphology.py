@@ -119,28 +119,43 @@ class MorphologyEngine:
         # Add Normalized Landmarks
         lm_list = [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in landmarks]
         
-        # --- EXTRAPOLATE FOREHEAD (Fix for "Stopping in middle") ---
+        # --- EXTRAPOLATE FOREHEAD (Refind Grid for Natural Coverage) ---
         # Vector from Glabella (168) to Trichion (10)
-        # We add points ABOVE Trichion to ensure visual coverage of high hairlines
         try:
             g = landmarks[168]
             t = landmarks[10]
-            dx = t.x - g.x
-            dy = t.y - g.y
+            # Direction vector (upwards)
+            vx = t.x - g.x
+            vy = t.y - g.y
             
-            # Add 3 rows of points above the hairline
-            for i in range(1, 4):
-                scale = 0.5 * i
-                lm_list.append({
-                    "x": t.x + dx * scale,
-                    "y": t.y + dy * scale,
-                    "z": t.z
-                })
-                # Add side forehead points (temples) approximation
-                lm_list.append({"x": t.x + dx*scale - 0.15*i, "y": t.y + dy*scale, "z": t.z})
-                lm_list.append({"x": t.x + dx*scale + 0.15*i, "y": t.y + dy*scale, "z": t.z})
-        except:
-            pass # Safety if landmarks missing
+            # Face width reference for horizontal spacing (use cheekbones)
+            face_w = abs(landmarks[454].x - landmarks[234].x)
+            step_x = face_w * 0.11 # Wide spacing
+            
+            # Generate a flatter, rounded arc (4 rows only - chop off crown spike)
+            for row in range(1, 5):
+                v_scale = 0.28 * row # Compact height
+                # Minimal taper to avoid "cone/spike" shape -> Flatter top
+                width_factor = 1.0 - (row * 0.05) 
+                
+                # Center point
+                base_x = t.x + vx * v_scale
+                base_y = t.y + vy * v_scale
+                lm_list.append({"x": base_x, "y": base_y, "z": t.z})
+                
+                # Side points (fan out with curvature)
+                for s in range(1, 6):
+                    h_offset = (step_x * s) * width_factor
+                    # Curvature: subtle drop
+                    curve_drop = (s * 0.015) * face_w
+                    
+                    # Left
+                    lm_list.append({"x": base_x - h_offset, "y": base_y + curve_drop, "z": t.z})
+                    # Right
+                    lm_list.append({"x": base_x + h_offset, "y": base_y + curve_drop, "z": t.z})
+                    
+        except Exception as e:
+            print(f"Forehead extrapolation error: {e}") 
 
         metrics["landmarks"] = lm_list
         return metrics
@@ -235,14 +250,17 @@ class MorphologyEngine:
         s_symmetry = (sym_eyes + sym_jaw + sym_nose) / 3
 
         # --- 7. AGGREGATION ---
+        # Updated to include ALL calculated metrics (Tilt, fWHR context, etc.)
         
         overall_score = (
-            0.20 * s_fifths_match +   
-            0.20 * s_thirds +         
-            0.15 * s_phi +            
-            0.15 * s_symmetry +       
-            0.15 * s_mouth_nose +     
-            0.15 * s_jaw # Increased Jaw Weight for models       
+            0.15 * s_fifths_match +   # Horizontal Harmony
+            0.15 * s_thirds +         # Vertical Harmony
+            0.15 * s_phi +            # Golden Ratio
+            0.15 * s_symmetry +       # Global Symmetry
+            0.15 * s_jaw +            # Sexual Dimorphism (Jaw Structure)
+            0.10 * s_tilt +           # Gaze / Canthal Tilt (Hero Trait)
+            0.10 * s_mouth_nose +     # Feature Relations
+            0.05 * s_low_ratio        # Lower Third Refinement
         )
 
         verdict = []
@@ -251,6 +269,7 @@ class MorphologyEngine:
         
         if s_fifths_match > 90: verdict.append("Ideal horizontal proportions.")
         if s_jaw > 95: verdict.append("Strong, dominant jawline.")
+        if s_tilt > 90: verdict.append("Positive canthal tilt (Hunter Eyes).")
 
         return {
             "overall": {
@@ -262,13 +281,14 @@ class MorphologyEngine:
                 "phiRatio": round(phi_ratio, 3),
                 "fifthsScore": round(s_fifths_match, 1),
                 "thirds": {k: round(v, 1) for k, v in thirds.items()},
-                "lowerThirdRatio": round(lower_ratio, 2)
+                "lowerThirdRatio": round(lower_ratio, 2),
+                "fWHR": round(fwhr, 2) # Added fWHR explicitly
             },
             "eyes": {
                 "canthalTilt": round(avg_eye_tilt, 1),
                 "eyeSpacingRatio": round(esr, 3), 
                 "eyeAreaRatio": round(eye_area_ratio, 3),
-                "harmonyIndex": round(s_fifths_match, 1) # Utilizing fifths score here
+                "harmonyIndex": round(s_fifths_match, 1) 
             },
             "nose": {
                 "mouthNoseRatio": round(mouth_nose_ratio, 2),
@@ -278,13 +298,14 @@ class MorphologyEngine:
                 "gonialAngle": round((self._get_angle(p, "gonionLeft", "zygomaLeft", "menton") + self._get_angle(p, "gonionRight", "zygomaRight", "menton"))/2, 1),
                 "jawToCheekRatio": round(bigonial/bizygoma, 2),
                 "symmetry": round(sym_jaw, 1),
-                "lowerThirdRatio": round(lower_ratio, 2) # Added for FeatureCard
+                "lowerThirdRatio": round(lower_ratio, 2)
             },
             "detailed": {
                 "Rule of Fifths Match": f"{s_fifths_match:.1f}%",
                 "Lower Third (1:2)": f"{lower_ratio:.2f}",
+                "Midface Ratio (fWHR)": f"{fwhr:.2f}",
                 "Golden Ratio Score": f"{s_phi:.1f}%",
-                "Sideburns Width": f"{int(w_face_full)}px"
+                "Canthal Tilt Score": f"{s_tilt:.1f}%"
             }
         }
 

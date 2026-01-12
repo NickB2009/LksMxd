@@ -1,263 +1,192 @@
 import { useState } from 'react';
-import { Scan, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Scan, Sparkles, Eye, Scissors, ChevronRight, Activity, Layout } from 'lucide-react';
 import FeatureCard from './FeatureCard';
 import ScoreGauge from './ScoreGauge';
 
 export default function MorphologyReport({ data }) {
-    const [showDetails, setShowDetails] = useState(false);
+    const [activeTab, setActiveTab] = useState('eyes');
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
-    if (!data) return null;
+    if (!data || !data.overall) return null;
 
-    // Calculate overall score based on key metrics with harmony weighting
-    const calculateOverallScore = () => {
-        const scores = [];
-        const weights = [];
+    const { overall, proportions, eyes, nose, jawline, detailed } = data;
 
-        // Symmetry (25% weight)
-        if (data.detailed?.['Symmetry Index']) {
-            const symScore = parseFloat(data.detailed['Symmetry Index']);
-            scores.push(symScore);
-            weights.push(0.25);
-        }
-
-        // Golden Ratio Adherence (20% weight)
-        if (data.phiRatio) {
-            const phiDiff = Math.abs(data.phiRatio - 1.618);
-            const phiTolerance = 1.618 * 0.20; // 20% tolerance
-            const phiScore = 100 * Math.exp(-Math.pow(phiDiff / phiTolerance, 2));
-            scores.push(phiScore);
-            weights.push(0.20);
-        }
-
-        // fWHR (15% weight) - Elite range: 1.8-2.2
-        if (data.fWHR) {
-            const fwhrDiff = Math.min(Math.abs(data.fWHR - 1.9), Math.abs(data.fWHR - 2.0));
-            const fwhrTolerance = 1.9 * 0.25;
-            const fwhrScore = 100 * Math.exp(-Math.pow(fwhrDiff / fwhrTolerance, 2));
-            scores.push(fwhrScore);
-            weights.push(0.15);
-        }
-
-        // Canthal Tilt (15% weight) - Elite: 7-10°
-        if (data.canthalTilt) {
-            const tiltDiff = Math.abs(data.canthalTilt - 8.0);
-            const tiltTolerance = 8.0 * 0.40;
-            const tiltScore = 100 * Math.exp(-Math.pow(tiltDiff / tiltTolerance, 2));
-            scores.push(tiltScore);
-            weights.push(0.15);
-        }
-
-        // Jaw Definition (15% weight) - Elite: 0.88-0.95
-        if (data.jawToCheek) {
-            const jawDiff = Math.abs(data.jawToCheek - 0.90);
-            const jawTolerance = 0.90 * 0.30;
-            const jawScore = 100 * Math.exp(-Math.pow(jawDiff / jawTolerance, 2));
-            scores.push(jawScore);
-            weights.push(0.15);
-        }
-
-        // Midface Ratio (10% weight) - Elite: 0.97-1.11
-        if (data.psl?.midface_ratio_psl) {
-            const midfaceDiff = Math.abs(data.psl.midface_ratio_psl - 1.0);
-            const midfaceTolerance = 1.0 * 0.20;
-            const midfaceScore = 100 * Math.exp(-Math.pow(midfaceDiff / midfaceTolerance, 2));
-            scores.push(midfaceScore);
-            weights.push(0.10);
-        }
-
-        // Weighted average
-        if (scores.length === 0) return 70;
-
-        const totalWeight = weights.reduce((a, b) => a + b, 0);
-        const weightedSum = scores.reduce((sum, score, i) => sum + score * weights[i], 0);
-        return Math.round(weightedSum / totalWeight);
-    };
-
-    const overallScore = calculateOverallScore();
-
-    const getScoreLabel = (score) => {
-        if (score >= 80) return { label: 'Exceptional', color: 'hsl(120, 70%, 50%)' };
-        if (score >= 70) return { label: 'Above Average', color: 'hsl(90, 70%, 50%)' };
-        if (score >= 60) return { label: 'Good', color: 'hsl(60, 70%, 50%)' };
-        if (score >= 50) return { label: 'Average', color: 'hsl(30, 70%, 50%)' };
-        return { label: 'Below Average', color: 'hsl(0, 70%, 50%)' };
-    };
-
-    const scoreInfo = getScoreLabel(overallScore);
+    const sections = [
+        { id: 'eyes', label: 'Eyes & Gaze', icon: Eye, color: 'hsl(210, 80%, 60%)' },
+        { id: 'nose', label: 'Nasal Structure', icon: Activity, color: 'hsl(280, 70%, 60%)' },
+        { id: 'jawline', label: 'Jaw & Chin', icon: Scissors, color: 'hsl(150, 70%, 50%)' },
+        { id: 'proportions', label: 'Face Harmony', icon: Layout, color: 'hsl(30, 90%, 60%)' }
+    ];
 
     return (
         <div className="fade-in" style={{ marginTop: '2rem', animationDelay: '0.2s' }}>
-            {/* At-a-Glance Summary */}
+            {/* Header / Summary */}
             <div className="card glass" style={{
                 background: 'linear-gradient(135deg, hsla(var(--accent-primary), 0.1), hsla(var(--bg-panel), 0.3))',
-                padding: '2rem',
-                marginBottom: '1.5rem',
+                padding: '2.5rem',
+                marginBottom: '2rem',
                 borderRadius: 'var(--radius-lg)',
-                border: '1px solid hsla(var(--accent-primary), 0.2)'
+                border: '1px solid hsla(var(--accent-primary), 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3rem',
+                flexWrap: 'wrap'
             }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                    <Sparkles size={28} color="hsl(var(--accent-primary))" />
-                    <h3 style={{ margin: 0, fontSize: '1.5rem' }}>Overall Assessment</h3>
+                <div style={{ flex: '0 0 auto' }}>
+                    <ScoreGauge
+                        value={overall.harmonyScore}
+                        ideal={85}
+                        label="Harmony Score"
+                        size={160}
+                    />
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '2rem', flexWrap: 'wrap' }}>
-                    {/* Score Circle */}
-                    <div style={{ flex: '0 0 auto' }}>
-                        <ScoreGauge
-                            value={overallScore}
-                            ideal={80}
-                            label="Overall Score"
-                            size={140}
-                        />
+                <div style={{ flex: '1 1 400px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <Sparkles size={24} color="hsl(var(--accent-primary))" />
+                        <h2 style={{ margin: 0, fontSize: '1.75rem', letterSpacing: '-0.02em' }}>Aesthetic Assessment</h2>
                     </div>
 
-                    {/* Top Strengths */}
-                    <div style={{ flex: '1 1 300px' }}>
-                        <h4 style={{
-                            fontSize: '0.95rem',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                            color: 'hsl(var(--txt-secondary))',
-                            marginBottom: '0.75rem'
-                        }}>
-                            Key Strengths
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {data.detailed?.['Symmetry Index'] && parseFloat(data.detailed['Symmetry Index']) > 90 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <div style={{
-                                        width: '6px',
-                                        height: '6px',
-                                        borderRadius: '50%',
-                                        background: 'hsl(var(--accent-primary))'
-                                    }} />
-                                    <span style={{ fontSize: '0.95rem' }}>High Facial Symmetry ({data.detailed['Symmetry Index']})</span>
-                                </div>
-                            )}
-                            {data.psl?.eye_size_ratio > 0.017 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <div style={{
-                                        width: '6px',
-                                        height: '6px',
-                                        borderRadius: '50%',
-                                        background: 'hsl(var(--accent-primary))'
-                                    }} />
-                                    <span style={{ fontSize: '0.95rem' }}>Large, Prominent Eyes</span>
-                                </div>
-                            )}
-                            {data.jawToCheek > 0.85 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <div style={{
-                                        width: '6px',
-                                        height: '6px',
-                                        borderRadius: '50%',
-                                        background: 'hsl(var(--accent-primary))'
-                                    }} />
-                                    <span style={{ fontSize: '0.95rem' }}>Strong Jaw Definition</span>
-                                </div>
-                            )}
-                            {data.canthalTilt > 4 && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <div style={{
-                                        width: '6px',
-                                        height: '6px',
-                                        borderRadius: '50%',
-                                        background: 'hsl(var(--accent-primary))'
-                                    }} />
-                                    <span style={{ fontSize: '0.95rem' }}>Positive Canthal Tilt</span>
-                                </div>
-                            )}
+                    <p style={{
+                        fontSize: '1.1rem',
+                        lineHeight: 1.6,
+                        color: 'hsl(var(--txt-primary))',
+                        margin: '0 0 1.5rem 0',
+                        fontWeight: 500
+                    }}>
+                        {overall.verdict}
+                    </p>
+
+                    <div style={{ display: 'flex', gap: '2rem' }}>
+                        <div>
+                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Symmetry Index</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{overall.symmetryScore}%</div>
+                        </div>
+                        <div>
+                            <div className="text-muted" style={{ fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Proportion Ratio</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{proportions.phiRatio}</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Feature Cards */}
-            <div className="card glass" style={{ padding: '2rem' }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.75rem',
-                    marginBottom: '2rem',
-                    paddingBottom: '1rem',
-                    borderBottom: '1px solid hsl(var(--border-subtle))'
-                }}>
-                    <Scan size={24} color="hsl(var(--accent-primary))" />
-                    <h3 style={{ margin: 0, fontSize: '1.25rem' }}>Feature Analysis</h3>
+            {/* Feature Exploration */}
+            <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '2rem' }} className="mobile-stack">
+                {/* Sidebar Navigation */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {sections.map(section => (
+                        <button
+                            key={section.id}
+                            onClick={() => setActiveTab(section.id)}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '1rem',
+                                padding: '1rem 1.25rem',
+                                borderRadius: 'var(--radius-md)',
+                                background: activeTab === section.id ? 'hsla(var(--accent-primary), 0.15)' : 'transparent',
+                                border: activeTab === section.id ? '1px solid hsla(var(--accent-primary), 0.3)' : '1px solid transparent',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                textAlign: 'left',
+                                width: '100%',
+                                color: activeTab === section.id ? 'hsl(var(--accent-primary))' : 'inherit'
+                            }}
+                        >
+                            <section.icon size={20} />
+                            <span style={{ fontWeight: 600, flex: 1 }}>{section.label}</span>
+                            {activeTab === section.id && <ChevronRight size={16} />}
+                        </button>
+                    ))}
                 </div>
 
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-                    gap: '1.5rem'
-                }}>
-                    <FeatureCard feature="eyes" data={data} />
-                    <FeatureCard feature="nose" data={data} />
-                    <FeatureCard feature="jaw" data={data} />
-                </div>
+                {/* Content Area */}
+                <div className="card glass" style={{ padding: '2rem' }}>
+                    {activeTab === 'eyes' && <FeatureCard feature="eyes" data={eyes} />}
+                    {activeTab === 'nose' && <FeatureCard feature="nose" data={nose} />}
+                    {activeTab === 'jawline' && <FeatureCard feature="jawline" data={jawline} />}
+                    {activeTab === 'proportions' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <Layout size={24} color="hsl(var(--accent-primary))" />
+                                <h3 style={{ margin: 0 }}>Neoclassical Proportions</h3>
+                            </div>
 
-                {/* Toggle Advanced Details */}
-                <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-                    <button
-                        onClick={() => setShowDetails(!showDetails)}
-                        className="btn"
-                        style={{
-                            background: 'transparent',
-                            border: '1px solid hsl(var(--border-subtle))',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.5rem'
-                        }}
-                    >
-                        {showDetails ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                        {showDetails ? 'Hide' : 'Show'} Advanced Metrics
-                    </button>
-                </div>
-
-                {/* Collapsible Advanced Section */}
-                {showDetails && (
-                    <div style={{
-                        marginTop: '2rem',
-                        padding: '1.5rem',
-                        background: 'hsla(var(--bg-app), 0.5)',
-                        borderRadius: 'var(--radius-md)',
-                        border: '1px solid hsla(255,255,255,0.05)'
-                    }}>
-                        <h4 style={{
-                            fontSize: '0.95rem',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                            color: 'hsl(var(--txt-secondary))',
-                            marginBottom: '1rem'
-                        }}>
-                            All Measurements
-                        </h4>
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-                            gap: '0.75rem',
-                            fontSize: '0.9rem'
-                        }}>
-                            {data.detailed && Object.entries(data.detailed).map(([key, value]) => (
-                                <div key={key} style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    padding: '0.5rem',
-                                    background: 'hsla(var(--bg-panel), 0.3)',
-                                    borderRadius: 'var(--radius-sm)'
-                                }}>
-                                    <span className="text-muted" style={{ fontSize: '0.85rem' }}>
-                                        {key}
-                                    </span>
-                                    <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                        {value}
-                                    </span>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
+                                <div className="card" style={{ background: 'hsla(var(--bg-panel), 0.5)', padding: '1.5rem' }}>
+                                    <div className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Phi Ratio (Length/Width)</div>
+                                    <div style={{ fontSize: '2rem', fontWeight: 800 }}>{proportions.phiRatio}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'hsl(var(--accent-primary))' }}>Ideal: 1.618</div>
                                 </div>
-                            ))}
+                                <div className="card" style={{ background: 'hsla(var(--bg-panel), 0.5)', padding: '1.5rem' }}>
+                                    <div className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>fWHR (Compactness)</div>
+                                    <div style={{ fontSize: '2rem', fontWeight: 800 }}>{proportions.fWHR}</div>
+                                    <div style={{ fontSize: '0.8rem', color: 'hsl(var(--accent-primary))' }}>Ideal: 1.8 - 2.0</div>
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: '1rem' }}>
+                                <h4 style={{ fontSize: '0.9rem', textTransform: 'uppercase', color: 'hsl(var(--txt-secondary))', marginBottom: '1rem' }}>Vertical Thirds Balance</h4>
+                                <div style={{ display: 'flex', height: '140px', gap: '8px' }}>
+                                    <ThirdBar label="Upper (Hairline)" pct={proportions.thirds.upper} color="#666" />
+                                    <ThirdBar label="Mid (Brow-Nose)" pct={proportions.thirds.mid} color="hsl(var(--accent-primary))" />
+                                    <ThirdBar label="Lower (Nose-Chin)" pct={proportions.thirds.lower} color="#666" />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem', fontSize: '0.85rem' }} className="text-muted">
+                                    <span>{proportions.thirds.upper}%</span>
+                                    <span>{proportions.thirds.mid}%</span>
+                                    <span>{proportions.thirds.lower}%</span>
+                                </div>
+                            </div>
                         </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Advanced Raw Data (Collapsible) */}
+            <div style={{ marginTop: '3rem', borderTop: '1px solid hsl(var(--border-subtle))', paddingTop: '1rem' }}>
+                <button
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    style={{ background: 'transparent', border: 'none', color: 'hsl(var(--txt-secondary))', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                    {showAdvanced ? 'Hide' : 'Show'} Full Morphometric Specs
+                </button>
+                {showAdvanced && (
+                    <div style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+                        {Object.entries(detailed).map(([key, value]) => (
+                            <div key={key} style={{ background: 'hsla(var(--bg-panel), 0.3)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)' }}>
+                                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', color: 'hsl(var(--txt-secondary))', marginBottom: '0.25rem' }}>{key}</div>
+                                <div style={{ fontWeight: 600, fontFamily: 'monospace' }}>{value}</div>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>
         </div>
     );
 }
+
+function ThirdBar({ label, pct, color }) {
+    return (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{
+                flex: 1,
+                background: 'hsla(var(--bg-panel), 0.5)',
+                borderRadius: 'var(--radius-sm)',
+                position: 'relative',
+                overflow: 'hidden'
+            }}>
+                <div style={{
+                    position: 'absolute',
+                    bottom: 0, left: 0, width: '100%',
+                    height: `${pct * 2.5}%`, // Scaling for visual impact
+                    background: `linear-gradient(to top, ${color}, transparent)`,
+                    opacity: 0.8,
+                    transition: 'height 1s ease-out'
+                }} />
+            </div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, textAlign: 'center', color }}>{label.split(' ')[0]}</div>
+        </div>
+    );
+}
+

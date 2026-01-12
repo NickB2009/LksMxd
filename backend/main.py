@@ -1,8 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from engine.morphology import MorphologyEngine
-from engine.rarity import calculate_rarity
-from engine.market_fit import calculate_market_fit, calculate_potential
 import uvicorn
 
 app = FastAPI(title="Morphology Scout API")
@@ -31,22 +29,14 @@ async def analyze_face(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         
-        # 1. Morphology
-        morphology_metrics = morphology_engine.process_image(contents)
+        # Morphology (Feature-centric analysis)
+        morphology_data = morphology_engine.process_image(contents)
         
-        if not morphology_metrics:
+        if not morphology_data:
              raise HTTPException(status_code=422, detail="No face detected or image unclear.")
              
-        # 2. Statistical Analysis
-        rarity_report = calculate_rarity(morphology_metrics)
-        market_fit_report = calculate_market_fit(morphology_metrics)
-        potential_report = calculate_potential(morphology_metrics)
-        
         return {
-            "morphology": morphology_metrics, # Return directly, no nesting
-            "rarity": rarity_report,
-            "marketFit": market_fit_report,
-            "potential": potential_report
+            "analysis": morphology_data
         }
 
     except Exception as e:

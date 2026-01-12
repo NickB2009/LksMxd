@@ -2,26 +2,17 @@ import { useState, useRef, useEffect } from 'react';
 import { Upload, Loader2, RefreshCw } from 'lucide-react';
 import { detectLandmarks, loadModel } from '../engine/morphology';
 import MorphologyReport from './MorphologyReport';
-import MarketFitReport from './MarketFitReport';
-import DetailedAnalysis from './DetailedAnalysis';
 
 export default function FaceAnalyzer() {
     const [image, setImage] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
     const [landmarks, setLandmarks] = useState(null);
-
-    // Results State
-    const [reportData, setReportData] = useState(null);
-    const [rarityData, setRarityData] = useState(null);
-    const [marketFitData, setMarketFitData] = useState(null);
-    const [potentialData, setPotentialData] = useState(null);
-
+    const [analysisData, setAnalysisData] = useState(null);
     const [modelLoading, setModelLoading] = useState(false);
 
     const imgRef = useRef(null);
     const canvasRef = useRef(null);
 
-    // Preload model on mount
     useEffect(() => {
         async function init() {
             setModelLoading(true);
@@ -42,15 +33,8 @@ export default function FaceAnalyzer() {
 
         const url = URL.createObjectURL(file);
         setImage(url);
-
-        // Reset results
         setLandmarks(null);
-        setReportData(null);
-        setRarityData(null);
-        setMarketFitData(null);
-        setPotentialData(null);
-
-        // Auto-analyze triggered by onLoad
+        setAnalysisData(null);
     };
 
     const runAnalysis = async () => {
@@ -58,15 +42,12 @@ export default function FaceAnalyzer() {
         setAnalyzing(true);
 
         try {
-            // 1. Visual Feedback (Client-side)
             const predictions = await detectLandmarks(imgRef.current);
             if (predictions && predictions.length > 0) {
                 setLandmarks(predictions[0].keypoints);
                 drawLandmarks(predictions[0].keypoints);
             }
 
-            // 2. Deep Analysis (Server-side)
-            // Get Blob from current image URL
             const blob = await fetch(image).then(r => r.blob());
             const formData = new FormData();
             formData.append('file', blob);
@@ -82,21 +63,7 @@ export default function FaceAnalyzer() {
             }
 
             const data = await response.json();
-
-            // Map API response to Component State
-            // Map API response to Component State
-            setReportData({
-                ...data.morphology, // Pass all top-level metrics (phiRatio, fWHR, thirds, etc.)
-                analysis: {
-                    faceShape: "Classified",
-                    eyeTiltCategory: data.morphology.canthalTilt > 4 ? "Positive (Hunter)" : "Neutral",
-                    proportions: "Calculated"
-                }
-            });
-
-            setRarityData(data.rarity);
-            setMarketFitData(data.marketFit);
-            setPotentialData(data.potential);
+            setAnalysisData(data.analysis);
 
         } catch (err) {
             console.error(err);
@@ -116,8 +83,6 @@ export default function FaceAnalyzer() {
 
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Premium overlay style
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
 
         keypoints.forEach((pt) => {
@@ -130,10 +95,7 @@ export default function FaceAnalyzer() {
     const reset = () => {
         setImage(null);
         setLandmarks(null);
-        setReportData(null);
-        setRarityData(null);
-        setMarketFitData(null);
-        setPotentialData(null);
+        setAnalysisData(null);
     };
 
     return (
@@ -212,13 +174,10 @@ export default function FaceAnalyzer() {
                 )}
             </div>
 
-            {reportData && (
-                <>
-                    <MorphologyReport data={reportData} />
-                    <DetailedAnalysis data={reportData} />
-                </>
+            {analysisData && (
+                <MorphologyReport data={analysisData} />
             )}
-            {rarityData && marketFitData && <MarketFitReport rarity={rarityData} marketFit={marketFitData} potential={potentialData} />}
         </div>
     );
 }
+

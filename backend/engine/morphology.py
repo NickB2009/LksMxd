@@ -70,219 +70,123 @@ class MorphologyEngine:
     def _calculate_metrics(self, p: Dict[str, np.ndarray]) -> Dict[str, Any]:
         def d(k1, k2): return np.linalg.norm(p[k1] - p[k2])
         
-        # --- 1. CORE ---
+        # --- 1. BASIC DIMENSIONS ---
         bizygoma = d("zygomaLeft", "zygomaRight")
         face_h = d("trichion", "menton")
         bigonial = d("gonionLeft", "gonionRight")
-        
-        phi_ratio = face_h / bizygoma
-        fwhr = bizygoma / d("glabella", "lipTop")
-        
-        # --- 2. SYMMETRY (Yaw-Adaptive) ---
-        # 1. Estimate Yaw (Head Turn)
-        # Compare "Nose Tip X" to "Midpoint of Eyes X"
-        eye_mid_x = (p["eyeLeftInner"][0] + p["eyeRightInner"][0]) / 2
-        nose_x = p["noseTip"][0]
-        # Yaw magnitude roughly: (NoseX - EyeMidX) / Bizygoma
-        yaw_proxy = (nose_x - eye_mid_x) / bizygoma
-        yaw_detected = abs(yaw_proxy) > 0.02 # ~2% deviation implies turn
+        phi_ratio = face_h / bizygoma if bizygoma > 0 else 1.6
+        fwhr = bizygoma / d("glabella", "lipTop") if d("glabella", "lipTop") > 0 else 1.9
 
-        if yaw_detected:
-            # ROTATION COMPENSATED MODE
-            def vert_dev(pt_l, pt_r):
-                 return abs(p[pt_l][1] - p[pt_r][1]) / face_h * 100
-                 
-            sym_jaw = vert_dev("gonionLeft", "gonionRight")
-            sym_cheek = vert_dev("zygomaLeft", "zygomaRight")
-            sym_eye = vert_dev("eyeLeftOuter", "eyeRightOuter")
-            
-            symmetry_index = 100 - (sym_jaw + sym_cheek + sym_eye) * 2 
-            symmetry_index = min(symmetry_index, 95.0) 
-            
-        else:
-            # FRONTAL MODE (Standard)
-            midline_x = (p["nasion"][0] + p["menton"][0]) / 2
-            def deviation(pt_l, pt_r):
-                dist_l = abs(p[pt_l][0] - midline_x)
-                dist_r = abs(p[pt_r][0] - midline_x)
-                return abs(dist_l - dist_r) / ((dist_l + dist_r) / 2) * 100
-                
-            sym_jaw = deviation("gonionLeft", "gonionRight")
-            sym_cheek = deviation("zygomaLeft", "zygomaRight")
-            sym_eye = deviation("eyeLeftOuter", "eyeRightOuter")
-            
-            symmetry_index = 100 - ((sym_jaw + sym_cheek + sym_eye) / 3)
+        # --- 2. FACIAL THIRDS ---
+        u_h = d("trichion", "glabella")
+        m_h = d("glabella", "subnasale")
+        l_h = d("subnasale", "menton")
+        tot = u_h + m_h + l_h if (u_h + m_h + l_h) > 0 else 1
+        thirds = {"upper": u_h/tot*100, "mid": m_h/tot*100, "lower": l_h/tot*100}
+
+        # --- 3. EYES ANALYSIS ---
+        biocular_width = d("eyeLeftOuter", "eyeRightOuter")
+        inner_canthal_dist = d("eyeLeftInner", "eyeRightInner")
+        esr = inner_canthal_dist / biocular_width if biocular_width > 0 else 0.46
         
-        # --- 3. ANGLES (New) ---
-        # Gonial Angle (Jaw Angle): Angle at Gonion formed by Ramus and Body.
-        # Frontal projection: Angle between vertical (Ear-Gonion) and Gonion-Menton?
-        # Zygoma is roughly above Gonion.
-        # Vector 1: Gonion -> Zygoma (Ramus approx)
-        # Vector 2: Gonion -> Menton (Body)
-        # --- 3. ANGLES (Fixed) ---
-        # Gonial Angle: Angle at Gonion (58/288)
-        # Ramus Vector: Gonion -> Zygoma (Approx vertical-ish)
-        # Body Vector: Gonion -> Menton (Horizontal-ish)
-        # Standard Gonial Angle is ~125 +/-. 90 is impossibly square. 110-120 is "square/strong".
-        # If user got 143, that's very obtuse (sloping).
-        # We need to ensure vectors are pointing AWAY from Gonion.
-        # V1 = Zygoma - Gonion
-        # V2 = Menton - Gonion
+        # Canthal Tilt
+        tilt_l = (p["eyeLeftInner"][1] - p["eyeLeftOuter"][1]) / d("eyeLeftInner", "eyeLeftOuter") * 100
+        tilt_r = (p["eyeRightInner"][1] - p["eyeRightOuter"][1]) / d("eyeRightInner", "eyeRightOuter") * 100
+        avg_eye_tilt = (tilt_l + tilt_r) / 2
         
+        # Eye Size
+        eye_h_l = d("eyeLeftTop", "eyeLeftBottom")
+        eye_w_l = d("eyeLeftInner", "eyeLeftOuter")
+        eye_h_r = d("eyeRightTop", "eyeRightBottom")
+        eye_w_r = d("eyeRightInner", "eyeRightOuter")
+        eye_area_ratio = ((eye_h_l * eye_w_l) + (eye_h_r * eye_w_r)) / 2 / (face_h * bizygoma)
+
+        # Eye Symmetry
+        eye_sym = 100 - abs(tilt_l - tilt_r) * 2
+
+        # --- 4. NOSE ANALYSIS ---
+        nose_l = d("nasion", "subnasale")
+        nose_w = d("noseAlareLeft", "noseAlareRight")
+        nose_ratio = nose_l / nose_w if nose_w > 0 else 1.5
+        nose_to_face = nose_w / bizygoma if bizygoma > 0 else 0.25
+        
+        # Nose Symmetry
+        midline_x = (p["nasion"][0] + p["menton"][0]) / 2
+        nose_sym = 100 - abs(abs(p["noseAlareLeft"][0] - midline_x) - abs(p["noseAlareRight"][0] - midline_x)) / nose_w * 100
+
+        # --- 5. JAWLINE & CHIN ---
         def get_angle(center, p1, p2):
             v1 = p[p1] - p[center]
             v2 = p[p2] - p[center]
             cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-            angle = np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
-            return angle
-            
-        angle_jaw_l = get_angle("gonionLeft", "zygomaLeft", "menton")
-        angle_jaw_r = get_angle("gonionRight", "zygomaRight", "menton")
-        gonial_angle_avg = (angle_jaw_l + angle_jaw_r) / 2
-        
-        # --- PSL / AESTHETIC SPECS ---
-        # 1. Eye Separation Ratio (ESR): Inner Canthal Distance / Bi-Ocular Width
-        # Bi-Ocular Width = Dist(LeftOuter, RightOuter)
-        # Inner Distance = Dist(LeftInner, RightInner)
-        # Ideal men: ~0.46-0.48? Or just use raw ratio.
-        # Standard: ESD / BiZygoma is also used.
-        # Let's use: InnerDist / OuterDist (Bi-ocular width not bizygoma)
-        biocular_width = d("eyeLeftOuter", "eyeRightOuter")
-        inner_canthal_dist = d("eyeLeftInner", "eyeRightInner")
-        esr = inner_canthal_dist / biocular_width
-        
-        # 2. Midface Ratio (Compactness)
-        # IPD (Inter-Pupillary Distance) / Midface Height
-        # Pupil approx = Center of Eye
-        pupil_l = (p["eyeLeftTop"] + p["eyeLeftBottom"] + p["eyeLeftInner"] + p["eyeLeftOuter"]) / 4
-        pupil_r = (p["eyeRightTop"] + p["eyeRightBottom"] + p["eyeRightInner"] + p["eyeRightOuter"]) / 4
-        ipd = np.linalg.norm(pupil_l - pupil_r)
-        midface_height = d("glabella", "subnasale") # Using Glabella-Subnasale as 'functional midface'
-        midface_ratio_psl = ipd / midface_height if midface_height > 0 else 1.0
+            return np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
 
-        # 3. Lower Third Dominance
-        lower_third_h = d("subnasale", "menton")
-        total_face_h = d("trichion", "menton")
-        lower_third_ratio = lower_third_h / total_face_h if total_face_h > 0 else 0.33
+        angle_l = get_angle("gonionLeft", "zygomaLeft", "menton")
+        angle_r = get_angle("gonionRight", "zygomaRight", "menton")
+        gonial_avg = (angle_l + angle_r) / 2
         
-        # --- RESEARCH-BACKED METRICS (Morphometric Analysis) ---
-        # 4. Eye Size Ratio - Research shows larger eyes correlate with attractiveness
-        # Calculate eye area as height * width
-        eye_height_l = d("eyeLeftTop", "eyeLeftBottom")
-        eye_width_l = d("eyeLeftInner", "eyeLeftOuter")
-        eye_height_r = d("eyeRightTop", "eyeRightBottom")
-        eye_width_r = d("eyeRightInner", "eyeRightOuter")
-        
-        avg_eye_area = ((eye_height_l * eye_width_l) + (eye_height_r * eye_width_r)) / 2
-        face_area = face_h * bizygoma
-        eye_size_ratio = avg_eye_area / face_area if face_area > 0 else 0.015
-        # Ideal: 0.015-0.020 (1.5-2.0% of face area)
-        
-        # 5. Nose Length-to-Width - "Long and narrow" is ideal per research
-        nose_length = d("nasion", "subnasale")
-        nose_width = d("noseAlareLeft", "noseAlareRight")
-        nose_lw_ratio = nose_length / nose_width if nose_width > 0 else 1.5
-        # Ideal: >1.5 (longer/narrower nose)
-        
-        # 6. Brow Position - "Raised eyebrows" are key attractiveness factor
-        brow_eye_dist_l = d("browLeftInner", "eyeLeftTop")
-        brow_eye_dist_r = d("browRightInner", "eyeRightTop")
-        avg_brow_dist = (brow_eye_dist_l + brow_eye_dist_r) / 2
-        brow_position = avg_brow_dist / face_h if face_h > 0 else 0.05
-        # Normalized by face height - higher values = more raised brows
-        
-        # Calibration: If Zygoma is "out" and Menton is "down", angle should be ~120.
-        # If result is 143, Ramus/Body are obtuse.
-        # Fix: Maybe measure angle against VERTICAL? 
-        # For robustness, let's use the Slope difference.
-        
-        # Chin Prominence (Recession Proxy)
-        # Fix: Ensure landmarks exist.
-        try:
-             chin_h = np.linalg.norm(p["menton"] - p["lipLowerTop"])
-        except:
-             chin_h = d("menton", "lipLowerTop") # Fallback
-             
+        jaw_to_cheek = bigonial / bizygoma
+        chin_h = d("menton", "lipLowerTop")
         philtrum = d("subnasale", "lipTop")
-        chin_philtrum_ratio = chin_h / philtrum if philtrum > 0.1 else 0.0
-
-        # Chin Taper Angle: Angle at Menton between chinLeft and chinRight
-        chin_taper = get_angle("menton", "chinLeft", "chinRight")
+        chin_phil_ratio = chin_h / philtrum if philtrum > 0 else 2.0
         
-        # Canthal Tilt (Eye Slope) - Previously was using Brow Tilt!
-        # Re-implement Eye Slope
-        tilt_l = (p["eyeLeftInner"][1] - p["eyeLeftOuter"][1]) / d("eyeLeftInner", "eyeLeftOuter") * 100
-        tilt_r = (p["eyeRightInner"][1] - p["eyeRightOuter"][1]) / d("eyeRightInner", "eyeRightOuter") * 100
-        # Positive if Inner Y > Outer Y (Inner is lower). 
-        # Image coords: Y increases down. So Inner(Lower Y val) < Outer(Higher Y val).
-        # Wait. "Positive Tilt" = Outer corner is HIGHER (PHYSICALLY UP).
-        # In IMAGE Y: Up is LOWER value.
-        # So OuterY < InnerY.
-        # If OuterY < InnerY => InnerY - OuterY > 0.
-        # My formula: InnerY - OuterY. 
-        # So Positive result = Positive Tilt.
-        avg_eye_tilt = (tilt_l + tilt_r) / 2
+        jaw_sym = 100 - abs(angle_l - angle_r) * 2
 
-        # --- VERDICT ---
+        # --- 6. HARMONY & OVERALL ---
+        # Symmetry index (Yaw-adaptive logic simplified for cleaner return)
+        sym_score = (eye_sym + nose_sym + jaw_sym) / 3
+        
+        # Harmony score: Weighted sum of deviations from "ideal"
+        # 1. Phi Ratio (Ideal 1.618)
+        phi_score = 100 * np.exp(-0.5 * ((phi_ratio - 1.618) / 0.1)**2)
+        # 2. ESR (Ideal 0.47)
+        esr_score = 100 * np.exp(-0.5 * ((esr - 0.47) / 0.03)**2)
+        # 3. fWHR (Ideal 1.9)
+        fwhr_score = 100 * np.exp(-0.5 * ((fwhr - 1.9) / 0.15)**2)
+        # 4. Thirds Balance (Ideal 33/33/33)
+        thirds_score = 100 - (abs(thirds["upper"]-33.3) + abs(thirds["mid"]-33.3) + abs(thirds["lower"]-33.3))
+        
+        harmony_score = (phi_score*0.2 + esr_score*0.2 + fwhr_score*0.2 + thirds_score*0.2 + sym_score*0.2)
+
         verdict = []
-        if symmetry_index > 94: verdict.append("High Facial Symmetry.")
-        elif symmetry_index < 88: verdict.append(f"Noticeable asymmetry ({(100-symmetry_index):.1f}%).")
-        if yaw_detected: verdict.append("(Rotation Compensated).")
-        
-        if gonial_angle_avg < 120: verdict.append("Square/Sharp Jawline.") # 120 is the new barrier
-        elif gonial_angle_avg > 135: verdict.append("Soft/Obtuse Jawline.")
-        
-        if chin_philtrum_ratio < 1.5: verdict.append("Compact chin height.")
-        else: verdict.append("Strong chin verticality.")
+        if harmony_score > 85: verdict.append("High Aesthetic Harmony.")
+        if sym_score > 94: verdict.append("Exceptional Symmetry.")
+        if gonial_avg < 125: verdict.append("Strongly defined jawline.")
+        if nose_ratio > 1.6: verdict.append("Refined nasal proportions.")
 
-        # --- EXPORT ---
-        u = d("trichion", "glabella")
-        m = d("glabella", "subnasale")
-        l = d("subnasale", "menton")
-        tot = u+m+l if (u+m+l) > 0 else 1
-        thirds = {"upper": u/tot*100, "mid": m/tot*100, "lower": l/tot*100}
-        
         return {
-            "phiRatio": round(phi_ratio, 3),
-            "fWHR": round(fwhr, 2),
-            "thirds": thirds,
-            "eyeSpacingRatio": round(d("eyeLeftInner", "eyeRightInner") / ((d("eyeLeftInner", "eyeLeftOuter") + d("eyeRightInner", "eyeRightOuter"))/2), 2),
-            "mouthNoseRatio": round(d("mouthLeft", "mouthRight")/d("noseAlareLeft", "noseAlareRight"), 2),
-            "jawToCheek": round(bigonial/bizygoma, 2),
-            "canthalTilt": round(avg_eye_tilt, 1), 
-            
-            "detailed": {
-                "Symmetry Index": f"{symmetry_index:.1f}%",
-                "Gonial Angle (Avg)": f"{gonial_angle_avg:.1f}°",
-                "Chin Taper Angle": f"{chin_taper:.1f}°",
-                "Chin-Philtrum Ratio": f"{chin_philtrum_ratio:.2f}",
-                "Ramus Length Approx": f"{int(d('gonionLeft', 'zygomaLeft'))} px",
-                "Mandible Body Length": f"{int(d('gonionLeft', 'menton'))} px",
-                "Midface Compactness": f"{(bizygoma/d('glabella','subnasale')):.2f}",
-                "Brow Tilt": "Variable", # Re-implement if needed, skipping for concise update
-                "Bizygomatic Width": f"{int(bizygoma)} px",
-                "Bigonial Width": f"{int(bigonial)} px",
+            "overall": {
+                "harmonyScore": round(harmony_score, 1),
+                "symmetryScore": round(sym_score, 1),
+                "verdict": " ".join(verdict)
             },
-            
-            "verdict": " ".join(verdict),
-            "raw": {"bizygomatic": bizygoma, "bigonial": bigonial},
-            
-            # Additional top-level keys for rarity/market_fit engines
-            "facialIndex": round(face_h / bizygoma, 2), # Alias for phiRatio
-            "midFaceRatio": round(m / l, 2) if l > 0 else 1.0,
-            "midface_compactness": round(bizygoma / m, 2) if m > 0 else 2.0,
-            "nose_ratio": round(d("noseAlareLeft", "noseAlareRight") / m, 2) if m > 0 else 0.8,
-            
-            # PSL Specifics
-            "psl": {
-                "esr": round(esr, 3),
-                "midface_ratio_psl": round(midface_ratio_psl, 2),
-                "lower_third_ratio": round(lower_third_ratio, 3),
-                "fwhr_psl": round(fwhr, 2), # Same as standard
-                "ipd_to_face_width": round(ipd / bizygoma, 2),
-                # Research-backed additions
-                "eye_size_ratio": round(eye_size_ratio, 4),
-                "nose_lw_ratio": round(nose_lw_ratio, 2),
-                "brow_position": round(brow_position, 3)
+            "proportions": {
+                "phiRatio": round(phi_ratio, 3),
+                "fWHR": round(fwhr, 2),
+                "thirds": {k: round(v, 1) for k, v in thirds.items()}
+            },
+            "eyes": {
+                "canthalTilt": round(avg_eye_tilt, 1),
+                "eyeSpacingRatio": round(esr, 3),
+                "eyeSizeRatio": round(eye_area_ratio, 4),
+                "symmetry": round(eye_sym, 1)
+            },
+            "nose": {
+                "noseRatio": round(nose_ratio, 2),
+                "noseToFaceWidth": round(nose_to_face, 3),
+                "symmetry": round(nose_sym, 1)
+            },
+            "jawline": {
+                "gonialAngle": round(gonial_avg, 1),
+                "jawToCheekRatio": round(jaw_to_cheek, 2),
+                "chinPhiltrumRatio": round(chin_phil_ratio, 2),
+                "symmetry": round(jaw_sym, 1)
+            },
+            "detailed": {
+                "Symmetry Index": f"{sym_score:.1f}%",
+                "Gonial Angle": f"{gonial_avg:.1f}°",
+                "Face Height": f"{int(face_h)}px",
+                "Bizygomatic Width": f"{int(bizygoma)}px"
             }
         }
+

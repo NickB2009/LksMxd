@@ -2,39 +2,38 @@ export default function ScoreGauge({ value, ideal, label, size = 120 }) {
     const val = parseFloat(value) || 0;
     const idl = parseFloat(ideal) || 1;
 
-    // Metric-specific tolerance (based on real supermodel variance)
-    const getToleranceMultiplier = (label) => {
+    // Metric-specific tolerance
+    const getToleranceMultiplier = (l) => {
         const tolerances = {
-            'Tilt': 0.40,           // Canthal tilt varies widely (4-10°)
-            'Definition': 0.30,     // Jaw definition (0.85-1.0+)
-            'Length/Width': 0.25,   // Nose L/W (1.4-1.8)
-            'Size': 0.25,           // Eye size (1.5-2.0%)
-            'Spacing': 0.20,        // ESR is more consistent (0.44-0.47)
-            'Lower Third': 0.15,    // Lower third is fairly consistent
-            'Mouth Ratio': 0.20     // Golden ratio adherence
+            'Symmetry': 0.1,         // Very tight (needs >95% for top score)
+            'Harmony Score': 0.15,   // Tight
+            'Canthal Tilt': 0.40,
+            'Gonial Angle': 0.15,
+            'Phi Ratio': 0.15,
+            'ESR': 0.20
         };
-        return tolerances[label] || 0.25; // Default 25%
+        return tolerances[l] || 0.25;
     };
 
     const toleranceMultiplier = getToleranceMultiplier(label);
     const tolerance = idl * toleranceMultiplier;
 
-    // Use Gaussian curve for smoother degradation
-    // Elite faces can deviate but still score high
+    // Gaussian curve: 100 * exp(-(diff/tolerance)^2)
     const diff = Math.abs(val - idl);
     const gaussianScore = 100 * Math.exp(-Math.pow(diff / tolerance, 2));
     const score = Math.max(0, Math.min(100, gaussianScore));
 
-    // Recalibrated thresholds (easier to reach "Exceptional")
     const getColor = () => {
-        if (score >= 80) return 'hsl(120, 70%, 50%)'; // Green - Exceptional
-        if (score >= 70) return 'hsl(90, 70%, 50%)';  // Yellow-green - Above Average
-        if (score >= 60) return 'hsl(60, 70%, 50%)';  // Yellow - Good
-        if (score >= 50) return 'hsl(30, 70%, 50%)';  // Orange - Average
+        if (score >= 90) return 'hsl(120, 70%, 55%)'; // Elite
+        if (score >= 80) return 'hsl(100, 70%, 50%)'; // Exceptional
+        if (score >= 70) return 'hsl(80, 70%, 50%)';  // Above Average
+        if (score >= 60) return 'hsl(60, 70%, 50%)';  // Good
+        if (score >= 50) return 'hsl(30, 70%, 50%)';  // Average
         return 'hsl(0, 70%, 50%)'; // Red - Below Average
     };
 
     const getLabel = () => {
+        if (score >= 90) return 'Elite';
         if (score >= 80) return 'Exceptional';
         if (score >= 70) return 'Above Average';
         if (score >= 60) return 'Good';
@@ -55,29 +54,26 @@ export default function ScoreGauge({ value, ideal, label, size = 120 }) {
             gap: '0.5rem'
         }}>
             <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-                {/* Background circle */}
                 <circle
                     cx={size / 2}
                     cy={size / 2}
                     r={radius}
                     fill="none"
-                    stroke="hsla(255, 255, 255, 0.1)"
-                    strokeWidth="8"
+                    stroke="hsla(255, 255, 255, 0.05)"
+                    strokeWidth="6"
                 />
-                {/* Progress circle */}
                 <circle
                     cx={size / 2}
                     cy={size / 2}
                     r={radius}
                     fill="none"
                     stroke={color}
-                    strokeWidth="8"
+                    strokeWidth="6"
                     strokeDasharray={circumference}
                     strokeDashoffset={offset}
                     strokeLinecap="round"
-                    style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                    style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)', filter: `drop-shadow(0 0 6px ${color}40)` }}
                 />
-                {/* Center text */}
                 <text
                     x={size / 2}
                     y={size / 2}
@@ -86,19 +82,20 @@ export default function ScoreGauge({ value, ideal, label, size = 120 }) {
                     style={{
                         transform: 'rotate(90deg)',
                         transformOrigin: 'center',
-                        fontSize: '1.5rem',
-                        fontWeight: 700,
-                        fill: color
+                        fontSize: size > 120 ? '1.75rem' : '1.25rem',
+                        fontWeight: 800,
+                        fill: 'white',
+                        fontFamily: 'Inter, sans-serif'
                     }}
                 >
                     {Math.round(score)}
                 </text>
             </svg>
             <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, color: color }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: color, marginBottom: '2px' }}>
                     {getLabel()}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'hsl(var(--txt-secondary))' }}>
+                <div style={{ fontSize: '0.7rem', color: 'hsl(var(--txt-secondary))', fontWeight: 500 }}>
                     {label}
                 </div>
             </div>

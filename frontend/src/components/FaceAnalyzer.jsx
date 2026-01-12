@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Upload, Loader2, RefreshCw } from 'lucide-react';
-import { detectLandmarks, loadModel } from '../engine/morphology';
 import MorphologyReport from './MorphologyReport';
 
 export default function FaceAnalyzer() {
@@ -8,24 +7,12 @@ export default function FaceAnalyzer() {
     const [analyzing, setAnalyzing] = useState(false);
     const [landmarks, setLandmarks] = useState(null);
     const [analysisData, setAnalysisData] = useState(null);
-    const [modelLoading, setModelLoading] = useState(false);
+    // Removed client-side model loading state
 
     const imgRef = useRef(null);
     const canvasRef = useRef(null);
 
-    useEffect(() => {
-        async function init() {
-            setModelLoading(true);
-            try {
-                await loadModel();
-            } catch (err) {
-                console.error("Model init failed", err);
-            } finally {
-                setModelLoading(false);
-            }
-        }
-        init();
-    }, []);
+    // Removed useEffect for loadModel - using Pure Backend Analysis now
 
     const handleImageUpload = (e) => {
         const file = e.target.files[0];
@@ -88,7 +75,7 @@ export default function FaceAnalyzer() {
 
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'rgba(100, 255, 218, 0.7)'; // High-vis cyan
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)'; // Pure Green for clarity
 
         keypoints.forEach((pt) => {
             ctx.beginPath();

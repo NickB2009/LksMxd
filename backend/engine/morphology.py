@@ -132,10 +132,10 @@ class MorphologyEngine:
             face_w = abs(landmarks[454].x - landmarks[234].x)
             step_x = face_w * 0.11 # Wide spacing
             
-            # Generate a flatter, rounded arc (4 rows only - chop off crown spike)
-            for row in range(1, 5):
+            # Generate a compact forehead strip (2 rows only - per user "2 dots too high")
+            for row in range(1, 3):
                 v_scale = 0.28 * row # Compact height
-                # Minimal taper to avoid "cone/spike" shape -> Flatter top
+                # Minimal taper
                 width_factor = 1.0 - (row * 0.05) 
                 
                 # Center point
@@ -146,7 +146,7 @@ class MorphologyEngine:
                 # Side points (fan out with curvature)
                 for s in range(1, 6):
                     h_offset = (step_x * s) * width_factor
-                    # Curvature: subtle drop
+                    # Curvature: slight drop
                     curve_drop = (s * 0.015) * face_w
                     
                     # Left
@@ -221,47 +221,52 @@ class MorphologyEngine:
             if not penalize_excess and x > max_v: return 100.0
             
             target = min_v if x < min_v else max_v
-            return 100 * np.exp(-0.5 * ((x - target) / sigma) ** 2)
+            score = 100 * np.exp(-0.5 * ((x - target) / sigma) ** 2)
+            return max(0, min(100, score))  # Clamp to 0-100
 
-        # A. Proportions (Balance is strict)
-        s_thirds = hero_score(abs(thirds["upper"]-thirds["lower"]), 0, 5, 5) # Score delta between thirds 
-        s_low_ratio = hero_score(lower_ratio, 1.8, 2.2, 0.4) 
+        # A. Proportions (Balance is strict but realistic)
+        s_thirds = hero_score(abs(thirds["upper"]-thirds["lower"]), 0, 8, 8)  # More forgiving
+        s_low_ratio = hero_score(lower_ratio, 1.6, 2.4, 0.6)  # Wider acceptable range
         s_fifths_match = fifths_score 
         
-        # B. Golden Ratio
-        s_phi = hero_score(phi_ratio, 1.55, 1.65, 0.1)
-        s_mouth_nose = hero_score(mouth_nose_ratio, 1.5, 1.7, 0.25)
+        # B. Golden Ratio (More forgiving)
+        s_phi = hero_score(phi_ratio, 1.5, 1.7, 0.2)  # Wider sigma
+        s_mouth_nose = hero_score(mouth_nose_ratio, 1.4, 1.8, 0.4)  # More forgiving
 
-        # C. Sexual Dimorphism (Hero Traits)
-        # Jaw: Wide relative to cheeks is good (Model tier). 0.85 - 1.1+
-        s_jaw = hero_score(bigonial/bizygoma, 0.82, 1.1, 0.15, penalize_excess=False)
+        # C. Sexual Dimorphism (Hero Traits - but capped)
+        # Jaw: Wide relative to cheeks is good (Model tier). 0.80 - 1.0
+        s_jaw = hero_score(bigonial/bizygoma, 0.78, 1.05, 0.20, penalize_excess=False)
         
-        # Tilt: Positive (Hunter) is good. 3 deg to 15 deg.
-        s_tilt = hero_score(avg_eye_tilt, 3.0, 15.0, 5.0, penalize_excess=False)
+        # Tilt: Positive (Hunter) is good. 2-12 deg ideal, cap at 95 to prevent inflation
+        s_tilt_raw = hero_score(avg_eye_tilt, 2.0, 12.0, 6.0, penalize_excess=False)
+        s_tilt = min(95, s_tilt_raw)  # Cap hero traits
 
-        # D. Symmetry (Strict)
+        # D. Symmetry (Fixed to prevent negative/extreme scores)
         midline_x = (p["glabella"][0] + p["menton"][0]) / 2
         def get_sym(kL, kR): 
-            return 100 - (abs(abs(p[kL][0]-midline_x) - abs(p[kR][0]-midline_x)) / bizygoma * 500)
+            # Reduced multiplier from 500 to 300 for more realistic scores
+            raw = 100 - (abs(abs(p[kL][0]-midline_x) - abs(p[kR][0]-midline_x)) / bizygoma * 300)
+            return max(0, min(100, raw))  # Clamp to 0-100
         
         sym_eyes = get_sym("eyeLeftOuter", "eyeRightOuter")
         sym_jaw = get_sym("gonionLeft", "gonionRight")
         sym_nose = get_sym("noseAlareLeft", "noseAlareRight")
         s_symmetry = (sym_eyes + sym_jaw + sym_nose) / 3
 
-        # --- 7. AGGREGATION ---
-        # Updated to include ALL calculated metrics (Tilt, fWHR context, etc.)
-        
+        # --- 7. AGGREGATION (Rebalanced for realistic distribution) ---
         overall_score = (
+            0.20 * s_symmetry +       # Symmetry is most important
             0.15 * s_fifths_match +   # Horizontal Harmony
             0.15 * s_thirds +         # Vertical Harmony
             0.15 * s_phi +            # Golden Ratio
-            0.15 * s_symmetry +       # Global Symmetry
-            0.15 * s_jaw +            # Sexual Dimorphism (Jaw Structure)
-            0.10 * s_tilt +           # Gaze / Canthal Tilt (Hero Trait)
+            0.12 * s_jaw +            # Jaw Structure (reduced from 0.15)
             0.10 * s_mouth_nose +     # Feature Relations
+            0.08 * s_tilt +           # Canthal Tilt (reduced from 0.10)
             0.05 * s_low_ratio        # Lower Third Refinement
         )
+        
+        # Clamp final score
+        overall_score = max(0, min(100, overall_score))
 
         verdict = []
         if overall_score > 90: verdict.append("Elite Model Tier Aesthetics.")
@@ -292,7 +297,9 @@ class MorphologyEngine:
             },
             "nose": {
                 "mouthNoseRatio": round(mouth_nose_ratio, 2),
-                "score": round(s_mouth_nose, 1)
+                "score": round(s_mouth_nose, 1),
+                "noseWidthRatio": round(nose_w / bizygoma, 3),
+                "symmetry": round(sym_nose, 1)
             },
             "jawline": {
                 "gonialAngle": round((self._get_angle(p, "gonionLeft", "zygomaLeft", "menton") + self._get_angle(p, "gonionRight", "zygomaRight", "menton"))/2, 1),

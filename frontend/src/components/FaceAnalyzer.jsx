@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Upload, Loader2, RefreshCw } from 'lucide-react';
+import { Upload, Loader2, RefreshCw, Bug, Microscope } from 'lucide-react';
 import MorphologyReport from './MorphologyReport';
 
 export default function FaceAnalyzer() {
@@ -7,12 +7,11 @@ export default function FaceAnalyzer() {
     const [analyzing, setAnalyzing] = useState(false);
     const [landmarks, setLandmarks] = useState(null);
     const [analysisData, setAnalysisData] = useState(null);
-    // Removed client-side model loading state
+    const [debugMode, setDebugMode] = useState(false);
+    const [debugStats, setDebugStats] = useState(null); // Store calc results for overlay
 
     const imgRef = useRef(null);
     const canvasRef = useRef(null);
-
-    // Removed useEffect for loadModel - using Pure Backend Analysis now
 
     const handleImageUpload = (e) => {
         const file = e.target.files[0];
@@ -24,8 +23,36 @@ export default function FaceAnalyzer() {
         setAnalysisData(null);
     };
 
+    // Store best-truth landmarks from calibration
+    const calibrationLandmarksRef = useRef(null);
+
+    const runCalibration = async () => {
+        setAnalyzing(true);
+        try {
+            const res = await fetch('http://localhost:8000/debug/calibration');
+            const data = await res.json();
+            calibrationLandmarksRef.current = data.analysis.landmarks;
+            setAnalysisData(data.analysis);
+            setImage(data.image_url);
+            setDebugMode(true);
+        } catch (e) {
+            console.error(e);
+            alert("Calibration failed");
+            setAnalyzing(false);
+        }
+    };
+
     const runAnalysis = async () => {
         if (!imgRef.current) return;
+
+        // Calibration Bypass: Use mocked truth if active
+        if (calibrationLandmarksRef.current) {
+            setLandmarks(calibrationLandmarksRef.current);
+            requestAnimationFrame(() => drawLandmarks(calibrationLandmarksRef.current));
+            setAnalyzing(false);
+            return;
+        }
+
         setAnalyzing(true);
 
         try {
@@ -66,23 +93,66 @@ export default function FaceAnalyzer() {
         const img = imgRef.current;
         if (!canvas || !img) return;
 
-        // Visual Synchronization: Match canvas to DISPLAY dimensions
+        // Container dimensions
         const displayW = img.offsetWidth;
         const displayH = img.offsetHeight;
+
+        // Image natural dimensions
+        const naturalW = img.naturalWidth;
+        const naturalH = img.naturalHeight;
+
+        // Calculate Rendered Dimensions (Object-Fit: Contain Logic)
+        const naturalRatio = naturalW / naturalH;
+        const displayRatio = displayW / displayH;
+
+        let renderW, renderH, offX = 0, offY = 0;
+
+        if (naturalRatio > displayRatio) {
+            // Image is wider relative to container -> Horizontal fit
+            renderW = displayW;
+            renderH = displayW / naturalRatio;
+            offY = (displayH - renderH) / 2;
+        } else {
+            // Image is taller relative to container -> Vertical fit
+            renderH = displayH;
+            renderW = displayH * naturalRatio;
+            offX = (displayW - renderW) / 2;
+        }
+
+        // Update Debug Stats
+        setDebugStats({
+            container: `${displayW}x${displayH}`,
+            natural: `${naturalW}x${naturalH}`,
+            rendered: `${Math.round(renderW)}x${Math.round(renderH)}`,
+            offset: `X:${Math.round(offX)} Y:${Math.round(offY)}`
+        });
 
         canvas.width = displayW;
         canvas.height = displayH;
 
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)'; // Pure Green for clarity
+
+        // Debug Visuals: Render Box
+        if (debugMode) {
+            ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(offX, offY, renderW, renderH);
+
+            // Crosshair
+            ctx.strokeStyle = 'rgba(0, 100, 255, 0.5)';
+            ctx.beginPath();
+            ctx.moveTo(offX + renderW / 2, 0); ctx.lineTo(offX + renderW / 2, displayH);
+            ctx.moveTo(0, offY + renderH / 2); ctx.lineTo(displayW, offY + renderH / 2);
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
 
         keypoints.forEach((pt) => {
             ctx.beginPath();
-            // Robust Visualization: Coordinates are [0.0, 1.0] normalized from backend
-            // Simply multiply by display dimensions for perfect alignment.
-            const x = pt.x * displayW;
-            const y = pt.y * displayH;
+            const x = offX + (pt.x * renderW);
+            const y = offY + (pt.y * renderH);
 
             ctx.arc(x, y, 1.2, 0, 2 * Math.PI);
             ctx.fill();
@@ -90,6 +160,9 @@ export default function FaceAnalyzer() {
     };
 
     const reset = () => {
+        calibrationLandmarksRef.current = null;
+        setDebugMode(false);
+        setDebugStats(null);
         setImage(null);
         setLandmarks(null);
         setAnalysisData(null);
@@ -146,8 +219,12 @@ export default function FaceAnalyzer() {
                                 style={{
                                     maxWidth: '100%',
                                     maxHeight: '600px',
-                                    display: 'block'
-                                    // No width/height forced here, let it render naturally constrained by max-
+                                    display: 'block',
+                                    margin: 0,
+                                    padding: 0,
+                                    width: 'auto',
+                                    height: 'auto',
+                                    objectFit: 'contain'
                                 }}
                                 onLoad={() => runAnalysis()}
                             />
@@ -164,6 +241,29 @@ export default function FaceAnalyzer() {
                                 }}
                             />
 
+                            {/* Debug Overlay */}
+                            {debugMode && debugStats && (
+                                <div style={{
+                                    position: 'absolute',
+                                    top: 10,
+                                    right: 10,
+                                    background: 'rgba(0, 0, 0, 0.85)',
+                                    color: 'lime',
+                                    padding: '0.5rem',
+                                    borderRadius: '4px',
+                                    fontSize: '0.75rem',
+                                    fontFamily: 'monospace',
+                                    pointerEvents: 'none',
+                                    zIndex: 10
+                                }}>
+                                    <div><strong>DEBUG MODE</strong></div>
+                                    <div>Container: {debugStats.container}</div>
+                                    <div>Natural: {debugStats.natural}</div>
+                                    <div>Rendered: {debugStats.rendered}</div>
+                                    <div>Offset: {debugStats.offset}</div>
+                                </div>
+                            )}
+
                             {analyzing && (
                                 <div style={{
                                     position: 'absolute', inset: 0,
@@ -179,9 +279,15 @@ export default function FaceAnalyzer() {
                             )}
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 1rem 1rem 1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '0 1rem 1rem 1rem' }}>
                             <button className="btn" onClick={reset} style={{ background: 'transparent', border: '1px solid hsl(var(--border-subtle))' }}>
                                 <RefreshCw size={16} style={{ marginRight: '0.5rem' }} /> New Analysis
+                            </button>
+                            <button className="btn" onClick={runCalibration} style={{ background: 'hsl(260, 70%, 50%)', border: '1px solid hsl(260, 70%, 60%)' }}>
+                                <Microscope size={16} style={{ marginRight: '0.5rem' }} /> Test Calibration
+                            </button>
+                            <button className="btn" onClick={() => setDebugMode(!debugMode)} style={{ opacity: debugMode ? 1 : 0.5 }}>
+                                <Bug size={16} style={{ marginRight: '0.5rem' }} /> Debug {debugMode ? 'ON' : 'OFF'}
                             </button>
                         </div>
                     </div>

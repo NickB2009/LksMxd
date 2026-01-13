@@ -32,11 +32,11 @@ export default function FeatureCard({ feature, data }) {
             </div>
 
             <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
-                <ScoreGauge value={data.symmetry} ideal={100} size={120} label="Symmetry" />
+                <ScoreGauge value={data.score} ideal={100} size={120} label="Phi Match" />
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <MetricRow label="Nose L/W Ratio" value={data.noseRatio} desc={data.noseRatio > 1.6 ? "Narrow / Refined" : "Balanced"} />
-                    <MetricRow label="Facial Width Ratio" value={`${(data.noseToFaceWidth * 100).toFixed(1)}%`} desc="Ideal: ~25% of bizygoma" />
+                    <MetricRow label="Mouth-Nose Ratio" value={data.mouthNoseRatio} desc="Ideal: 1.618" />
+                    <MetricRow label="Nose Width Ratio" value={`${(data.noseWidthRatio * 100).toFixed(1)}%`} desc="Ideal: ~25% of Face" />
                     <MetricRow label="Nasal Symmetry" value={`${data.symmetry}%`} desc="Central alignment" />
                 </div>
             </div>

@@ -181,6 +181,9 @@ class MorphologyEngine:
         lower_lower = d("lipBottom", "menton") 
         lower_ratio = lower_lower / lower_upper if lower_upper > 0 else 2.0
         
+        # Chin-Philtrum Ratio (same as lower ratio)
+        chin_philtrum_ratio = lower_ratio
+        
         # --- 3. HORIZONTAL RULE OF FIFTHS ---
         w_face_full = d("earLeft", "earRight")
         w_zygoma = bizygoma
@@ -210,62 +213,113 @@ class MorphologyEngine:
         mouth_w = d("mouthLeft", "mouthRight")
         mouth_nose_ratio = mouth_w / nose_w if nose_w > 0 else 1.618
 
-        # --- 6. SCORING (HERO CURVES) ---
-        def hero_score(x, min_v, max_v, sigma, penalize_excess=True):
+        # --- 6. SCORING (PEAK-REWARD SYSTEM) ---
+        def peak_reward_score(x, target, sigma_low, sigma_high, cap=100):
             """
-            Scores 100% if x is between min_v and max_v.
-            Gaussian decay outside this range.
-            If penalize_excess is False, values > max_v are treated as ideal (100%).
+            Asymmetric scoring that rewards values approaching 'target':
+            - Linear growth as x approaches target from below
+            - Gentle Gaussian falloff for extreme values beyond target
+            - Allows exceptional traits to score very high
             """
-            if min_v <= x <= max_v: return 100.0
-            if not penalize_excess and x > max_v: return 100.0
+            if x <= target:
+                # Below target: linear growth (80-100 range for reasonable values)
+                normalized = (x / target) if target > 0 else 0
+                score = 80 + (20 * normalized)
+            else:
+                # Above target: gentle falloff (stays high for moderate excess)
+                excess = (x - target) / sigma_high
+                score = 100 * np.exp(-0.5 * excess ** 2)
             
+            return max(0, min(cap, score))
+        
+        def strict_gaussian(x, min_v, max_v, sigma):
+            """Traditional gaussian for strict metrics like symmetry"""
+            if min_v <= x <= max_v:
+                return 100.0
             target = min_v if x < min_v else max_v
             score = 100 * np.exp(-0.5 * ((x - target) / sigma) ** 2)
-            return max(0, min(100, score))  # Clamp to 0-100
+            return max(0, min(100, score))
 
-        # A. Proportions (Balance is strict but realistic)
-        s_thirds = hero_score(abs(thirds["upper"]-thirds["lower"]), 0, 8, 8)  # More forgiving
-        s_low_ratio = hero_score(lower_ratio, 1.6, 2.4, 0.6)  # Wider acceptable range
-        s_fifths_match = fifths_score 
-        
-        # B. Golden Ratio (More forgiving)
-        s_phi = hero_score(phi_ratio, 1.5, 1.7, 0.2)  # Wider sigma
-        s_mouth_nose = hero_score(mouth_nose_ratio, 1.4, 1.8, 0.4)  # More forgiving
-
-        # C. Sexual Dimorphism (Hero Traits - but capped)
-        # Jaw: Wide relative to cheeks is good (Model tier). 0.80 - 1.0
-        s_jaw = hero_score(bigonial/bizygoma, 0.78, 1.05, 0.20, penalize_excess=False)
-        
-        # Tilt: Positive (Hunter) is good. 2-12 deg ideal, cap at 95 to prevent inflation
-        s_tilt_raw = hero_score(avg_eye_tilt, 2.0, 12.0, 6.0, penalize_excess=False)
-        s_tilt = min(95, s_tilt_raw)  # Cap hero traits
-
-        # D. Symmetry (Fixed to prevent negative/extreme scores)
+        # A. SYMMETRY (Strict - this should be high for attractive faces)
         midline_x = (p["glabella"][0] + p["menton"][0]) / 2
         def get_sym(kL, kR): 
-            # Reduced multiplier from 500 to 300 for more realistic scores
-            raw = 100 - (abs(abs(p[kL][0]-midline_x) - abs(p[kR][0]-midline_x)) / bizygoma * 300)
-            return max(0, min(100, raw))  # Clamp to 0-100
+            # Asymmetry as percentage of face width
+            asymmetry_pct = (abs(abs(p[kL][0]-midline_x) - abs(p[kR][0]-midline_x)) / bizygoma) * 100
+            # Max 3% asymmetry still scores 95+
+            score = 100 - (asymmetry_pct * 20)  # Each 1% costs 20 points
+            return max(0, min(100, score))
         
         sym_eyes = get_sym("eyeLeftOuter", "eyeRightOuter")
         sym_jaw = get_sym("gonionLeft", "gonionRight")
         sym_nose = get_sym("noseAlareLeft", "noseAlareRight")
         s_symmetry = (sym_eyes + sym_jaw + sym_nose) / 3
 
-        # --- 7. AGGREGATION (Rebalanced for realistic distribution) ---
-        overall_score = (
-            0.20 * s_symmetry +       # Symmetry is most important
-            0.15 * s_fifths_match +   # Horizontal Harmony
-            0.15 * s_thirds +         # Vertical Harmony
-            0.15 * s_phi +            # Golden Ratio
-            0.12 * s_jaw +            # Jaw Structure (reduced from 0.15)
-            0.10 * s_mouth_nose +     # Feature Relations
-            0.08 * s_tilt +           # Canthal Tilt (reduced from 0.10)
-            0.05 * s_low_ratio        # Lower Third Refinement
+        # B. PROPORTIONS (Wide acceptable range, gentle penalties)
+        # Thirds delta: 0-15mm is acceptable (models can have unequal thirds)
+        s_thirds = strict_gaussian(abs(thirds["upper"]-thirds["lower"]), 0, 15, 12)
+        
+        # Lower third ratio: Very wide range (1.4 - 2.8)
+        s_low_ratio = strict_gaussian(lower_ratio, 1.4, 2.8, 0.8)
+        
+        # Fifths (already a score)
+        s_fifths_match = fifths_score
+
+        # C. GOLDEN RATIOS (Wide tolerances)
+        # Phi ratio: 1.4 - 1.8 is acceptable
+        s_phi = strict_gaussian(phi_ratio, 1.4, 1.8, 0.4)
+        
+        # Mouth-nose: 1.2 - 2.0 is acceptable
+        s_mouth_nose = strict_gaussian(mouth_nose_ratio, 1.2, 2.0, 0.6)
+
+        # D. SEXUAL DIMORPHISM (PEAK REWARD - Higher is better!)
+        # Jaw width ratio: Peak at 0.95, reward up to 1.2+
+        jaw_ratio = bigonial/bizygoma
+        if jaw_ratio >= 0.95:
+            # Strong jaw: Score increases linearly then plateaus
+            s_jaw = min(100, 85 + ((jaw_ratio - 0.95) * 60))  # 0.95->85, 1.0->88, 1.1->94, 1.2+->100
+        else:
+            # Weak jaw: Gentle penalty
+            s_jaw = 50 + ((jaw_ratio / 0.95) * 35)  # 0.7->73, 0.8->80, 0.9->85
+        
+        # Canthal Tilt: Peak reward for positive tilt
+        if avg_eye_tilt >= 5:
+            # Positive tilt: Strong reward
+            s_tilt = min(100, 80 + (avg_eye_tilt * 1.5))  # 5°->87, 8°->92, 10°->95, 15°->100+
+        elif avg_eye_tilt >= 0:
+            # Neutral: Still decent
+            s_tilt = 70 + (avg_eye_tilt * 2)  # 0°->70, 3°->76
+        else:
+            # Negative tilt: Penalty
+            s_tilt = max(30, 70 + (avg_eye_tilt * 5))  # -2°->60, -5°->45
+
+        # --- 7. TRAIT SYNERGIES (Multiplicative Bonuses) ---
+        # Elite combination: High symmetry + Strong jaw + Positive tilt
+        has_elite_combo = (s_symmetry > 85 and s_jaw > 90 and s_tilt > 85)
+        synergy_bonus = 1.08 if has_elite_combo else 1.0
+        
+        # Model-tier symmetry bonus
+        symmetry_bonus = 1.0
+        if s_symmetry > 95:
+            symmetry_bonus = 1.05
+        elif s_symmetry > 90:
+            symmetry_bonus = 1.03
+
+        # --- 8. FINAL AGGREGATION (Weighted + Bonuses) ---
+        base_score = (
+            0.25 * s_symmetry +       # Symmetry is critical
+            0.18 * s_jaw +            # Strong jaw is highly attractive
+            0.15 * s_fifths_match +   # Horizontal harmony
+            0.12 * s_tilt +           # Eye tilt matters
+            0.10 * s_phi +            # Golden ratio
+            0.08 * s_thirds +         # Vertical thirds
+            0.07 * s_mouth_nose +     # Feature relations
+            0.05 * s_low_ratio        # Lower third
         )
         
-        # Clamp final score
+        # Apply bonuses
+        overall_score = base_score * synergy_bonus * symmetry_bonus
+        
+        # Clamp to 0-100
         overall_score = max(0, min(100, overall_score))
 
         verdict = []
@@ -304,6 +358,7 @@ class MorphologyEngine:
             "jawline": {
                 "gonialAngle": round((self._get_angle(p, "gonionLeft", "zygomaLeft", "menton") + self._get_angle(p, "gonionRight", "zygomaRight", "menton"))/2, 1),
                 "jawToCheekRatio": round(bigonial/bizygoma, 2),
+                "chinPhiltrumRatio": round(chin_philtrum_ratio, 2),
                 "symmetry": round(sym_jaw, 1),
                 "lowerThirdRatio": round(lower_ratio, 2)
             },

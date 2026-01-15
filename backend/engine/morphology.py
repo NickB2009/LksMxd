@@ -240,80 +240,96 @@ class MorphologyEngine:
             score = 100 * np.exp(-0.5 * ((x - target) / sigma) ** 2)
             return max(0, min(100, score))
 
-        # A. SYMMETRY (Strict - this should be high for attractive faces)
+        # A. SYMMETRY (Very robust to real-world photo conditions)
         midline_x = (p["glabella"][0] + p["menton"][0]) / 2
         def get_sym(kL, kR): 
-            # Asymmetry as percentage of face width
             asymmetry_pct = (abs(abs(p[kL][0]-midline_x) - abs(p[kR][0]-midline_x)) / bizygoma) * 100
-            # Max 3% asymmetry still scores 95+
-            score = 100 - (asymmetry_pct * 20)  # Each 1% costs 20 points
-            return max(0, min(100, score))
+            # VERY forgiving: Each 1% asymmetry costs only 5 points
+            # This allows for head tilt, slight rotation,  lighting, etc.
+            score = 100 - (asymmetry_pct * 5) 
+            return max(50, min(100, score)) # Floor at 50, not 20
         
         sym_eyes = get_sym("eyeLeftOuter", "eyeRightOuter")
         sym_jaw = get_sym("gonionLeft", "gonionRight")
         sym_nose = get_sym("noseAlareLeft", "noseAlareRight")
         s_symmetry = (sym_eyes + sym_jaw + sym_nose) / 3
 
-        # B. PROPORTIONS (Wide acceptable range, gentle penalties)
-        # Thirds delta: 0-15mm is acceptable (models can have unequal thirds)
+        # B. PROPORTIONS
         s_thirds = strict_gaussian(abs(thirds["upper"]-thirds["lower"]), 0, 15, 12)
         
-        # Lower third ratio: Very wide range (1.4 - 2.8)
-        s_low_ratio = strict_gaussian(lower_ratio, 1.4, 2.8, 0.8)
+        # CHIN-PHILTRUM (Fixed calculation using more reliable vertical measurements)
+        # The issue: lipBottom-menton often gives too high values
+        # Better approach: Use subnasale as top reference
         
-        # Fifths (already a score)
+        # Method 1: Traditional (philtrum vs chin)
+        phil_h_traditional = d("subnasale", "lipTop")
+        chin_h_traditional = d("lipBottom", "menton")
+        
+        # Method 2: Use lower third proportions (more stable)
+        lower_third_h = d("subnasale", "menton")  
+        # Typical split: philtrum ~40%, lips ~10%, chin ~50%
+        phil_h_estimate = lower_third_h * 0.40
+        chin_h_estimate = lower_third_h * 0.50
+        
+        # Use the method that gives more reasonable values (2.0-3.0 range)
+        ratio_traditional = chin_h_traditional / phil_h_traditional if phil_h_traditional > 0 else 2.2
+        ratio_estimate = chin_h_estimate / phil_h_estimate if phil_h_estimate > 0 else 2.2
+        
+        # Blend: if traditional is extreme, use estimate
+        if 1.5 <= ratio_traditional <= 3.5:
+            chin_philtrum_ratio = ratio_traditional
+        else:
+            chin_philtrum_ratio = ratio_estimate
+            
+        # Clamp to reasonable range
+        chin_philtrum_ratio = max(1.5, min(3.5, chin_philtrum_ratio))
+        lower_ratio = chin_philtrum_ratio  # backward compat
+        
+        s_low_ratio = strict_gaussian(chin_philtrum_ratio, 1.8, 2.8, 0.6)  # More forgiving range
         s_fifths_match = fifths_score
 
-        # C. GOLDEN RATIOS (Wide tolerances)
-        # Phi ratio: 1.4 - 1.8 is acceptable
+        # C. GOLDEN RATIOS
         s_phi = strict_gaussian(phi_ratio, 1.4, 1.8, 0.4)
-        
-        # Mouth-nose: 1.2 - 2.0 is acceptable
         s_mouth_nose = strict_gaussian(mouth_nose_ratio, 1.2, 2.0, 0.6)
 
         # D. SEXUAL DIMORPHISM (PEAK REWARD - Higher is better!)
-        # Jaw width ratio: Peak at 0.95, reward up to 1.2+
+        # Jaw width ratio: Reward wide jaws aggressively
         jaw_ratio = bigonial/bizygoma
-        if jaw_ratio >= 0.95:
-            # Strong jaw: Score increases linearly then plateaus
-            s_jaw = min(100, 85 + ((jaw_ratio - 0.95) * 60))  # 0.95->85, 1.0->88, 1.1->94, 1.2+->100
+        if jaw_ratio >= 0.88:
+            s_jaw = min(100, 85 + ((jaw_ratio - 0.88) * 80))  # 0.88->85, 0.95->90, 1.1->100
         else:
-            # Weak jaw: Gentle penalty
-            s_jaw = 50 + ((jaw_ratio / 0.95) * 35)  # 0.7->73, 0.8->80, 0.9->85
+            s_jaw = 60 + ((jaw_ratio / 0.88) * 25) # 0.7->80
         
-        # Canthal Tilt: Peak reward for positive tilt
-        if avg_eye_tilt >= 5:
-            # Positive tilt: Strong reward
-            s_tilt = min(100, 80 + (avg_eye_tilt * 1.5))  # 5°->87, 8°->92, 10°->95, 15°->100+
+        # Canthal Tilt: Reward positive tilt aggressively
+        if avg_eye_tilt >= 3:
+            s_tilt = min(100, 85 + (avg_eye_tilt * 2))  # 3°->91, 7°->100
         elif avg_eye_tilt >= 0:
-            # Neutral: Still decent
-            s_tilt = 70 + (avg_eye_tilt * 2)  # 0°->70, 3°->76
+            s_tilt = 75 + (avg_eye_tilt * 3) 
         else:
-            # Negative tilt: Penalty
-            s_tilt = max(30, 70 + (avg_eye_tilt * 5))  # -2°->60, -5°->45
+            s_tilt = max(40, 75 + (avg_eye_tilt * 8))
 
         # --- 7. TRAIT SYNERGIES (Multiplicative Bonuses) ---
         # Elite combination: High symmetry + Strong jaw + Positive tilt
-        has_elite_combo = (s_symmetry > 85 and s_jaw > 90 and s_tilt > 85)
-        synergy_bonus = 1.08 if has_elite_combo else 1.0
+        has_elite_combo = (s_symmetry > 75 and s_jaw > 88 and s_tilt > 88)  # Lowered symmetry threshold
+        synergy_bonus = 1.12 if has_elite_combo else 1.0 # 12% bonus for combo
         
-        # Model-tier symmetry bonus
+        # Symmetry bonus but more attainable
         symmetry_bonus = 1.0
-        if s_symmetry > 95:
+        if s_symmetry > 85:
             symmetry_bonus = 1.05
-        elif s_symmetry > 90:
-            symmetry_bonus = 1.03
+        elif s_symmetry > 75:
+            symmetry_bonus = 1.02
 
-        # --- 8. FINAL AGGREGATION (Weighted + Bonuses) ---
+        # --- 8. FINAL AGGREGATION (Reduced symmetry weight since it's unreliable) ---
         base_score = (
-            0.25 * s_symmetry +       # Symmetry is critical
-            0.18 * s_jaw +            # Strong jaw is highly attractive
-            0.15 * s_fifths_match +   # Horizontal harmony
-            0.12 * s_tilt +           # Eye tilt matters
-            0.10 * s_phi +            # Golden ratio
-            0.08 * s_thirds +         # Vertical thirds
-            0.07 * s_mouth_nose +     # Feature relations
-            0.05 * s_low_ratio        # Lower third
+            0.15 * s_symmetry +       # Reduced from 0.20 (too punishing for photos)
+            0.25 * s_jaw +            # Jaw is huge for attractiveness
+            0.15 * s_fifths_match +   
+            0.18 * s_tilt +           # Tilt is definitive
+            0.10 * s_phi +            
+            0.08 * s_thirds +         
+            0.05 * s_mouth_nose +     
+            0.04 * s_low_ratio        # Reduced since calculation is unstable
         )
         
         # Apply bonuses
@@ -321,6 +337,33 @@ class MorphologyEngine:
         
         # Clamp to 0-100
         overall_score = max(0, min(100, overall_score))
+
+        # === DEBUG OUTPUT ===
+        print(f"\n{'='*60}")
+        print(f"DEBUG: Facial Analysis Breakdown")
+        print(f"{'='*60}")
+        print(f"RAW MEASUREMENTS:")
+        print(f"  Jaw Ratio (bigonial/bizygoma): {bigonial/bizygoma:.3f}")
+        print(f"  Canthal Tilt: {avg_eye_tilt:.2f}°")
+        print(f"  Chin-Philtrum Ratio: {chin_philtrum_ratio:.3f}")
+        print(f"  Lower Ratio: {lower_ratio:.3f}")
+        print(f"  Phi Ratio: {phi_ratio:.3f}")
+        print(f"  Mouth-Nose Ratio: {mouth_nose_ratio:.3f}")
+        print(f"\nINDIVIDUAL SCORES:")
+        print(f"  s_symmetry: {s_symmetry:.1f}")
+        print(f"  s_jaw: {s_jaw:.1f}")
+        print(f"  s_tilt: {s_tilt:.1f}")
+        print(f"  s_fifths_match: {s_fifths_match:.1f}")
+        print(f"  s_phi: {s_phi:.1f}")
+        print(f"  s_thirds: {s_thirds:.1f}")
+        print(f"  s_mouth_nose: {s_mouth_nose:.1f}")
+        print(f"  s_low_ratio: {s_low_ratio:.1f}")
+        print(f"\nAGGREGATION:")
+        print(f"  Base Score: {base_score:.2f}")
+        print(f"  Synergy Bonus: {synergy_bonus:.2f}x")
+        print(f"  Symmetry Bonus: {symmetry_bonus:.2f}x")
+        print(f"  FINAL SCORE: {overall_score:.1f}")
+        print(f"{'='*60}\n")
 
         verdict = []
         if overall_score > 90: verdict.append("Elite Model Tier Aesthetics.")

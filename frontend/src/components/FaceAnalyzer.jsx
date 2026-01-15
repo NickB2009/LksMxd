@@ -279,15 +279,9 @@ export default function FaceAnalyzer() {
                             )}
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '0 1rem 1rem 1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 1rem 1rem 1rem' }}>
                             <button className="btn" onClick={reset} style={{ background: 'transparent', border: '1px solid hsl(var(--border-subtle))' }}>
                                 <RefreshCw size={16} style={{ marginRight: '0.5rem' }} /> New Analysis
-                            </button>
-                            <button className="btn" onClick={runCalibration} style={{ background: 'hsl(260, 70%, 50%)', border: '1px solid hsl(260, 70%, 60%)' }}>
-                                <Microscope size={16} style={{ marginRight: '0.5rem' }} /> Test Calibration
-                            </button>
-                            <button className="btn" onClick={() => setDebugMode(!debugMode)} style={{ opacity: debugMode ? 1 : 0.5 }}>
-                                <Bug size={16} style={{ marginRight: '0.5rem' }} /> Debug {debugMode ? 'ON' : 'OFF'}
                             </button>
                         </div>
                     </div>

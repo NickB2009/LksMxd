@@ -132,49 +132,86 @@ class MorphologyEngine:
 
     def process_image(self, image_bytes: bytes) -> Dict[str, Any]:
         try:
-            pil_image = Image.open(io.BytesIO(image_bytes))
-            pil_image = ImageOps.exif_transpose(pil_image)
-            if pil_image.mode != 'RGB':
-                pil_image = pil_image.convert('RGB')
-            image = np.array(pil_image)
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        except Exception as e:
-            print(f"PIL Load Failed: {e}, falling back to cv2 raw decode")
+            # 1. Decode Image Layer
             nparr = np.frombuffer(image_bytes, np.uint8)
             image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception as e:
+            raise ValueError(f"Could not decode image: {e}")
 
         if image is None:
             raise ValueError("Could not decode image")
             
-        processed_image = self._preprocess_image(image)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(processed_image, cv2.COLOR_BGR2RGB))
+        # 2. Preprocessing
+        original = self._preprocess_image(image)
+        h, w, _ = original.shape
+        
+        # 3. Variance Reduction Pipeline (3-Pass)
+        # Pass A: Original
+        # Pass B: Zoom 105% (Center Crop)
+        # Pass C: Mirrored
+        
+        # Create Zoom
+        # Crop 2.5% from separate edges effectively
+        crop_margin = int(min(h, w) * 0.025)
+        zoom_img = original[crop_margin:h-crop_margin, crop_margin:w-crop_margin]
+        zoom_img = cv2.resize(zoom_img, (w, h), interpolation=cv2.INTER_LINEAR)
+        
+        # Create Mirror
+        mirror_img = cv2.flip(original, 1)
+        
+        batch = [("orig", original), ("zoom", zoom_img), ("flip", mirror_img)]
+        results = []
+        best_landmarks = None
+        
+        for name, img_pass in batch:
+            feats, lms = self._analyze_single_pass(img_pass)
+            if feats:
+                results.append(feats)
+                if name == "orig":
+                    best_landmarks = lms
+        
+        if not results:
+            return None # Fail
+            
+        # 4. Averaging (Stabilizer)
+        # Average each key across successful results
+        avg_features = {}
+        keys = results[0].keys()
+        
+        for k in keys:
+            vals = [r[k] for r in results]
+            avg_features[k] = sum(vals) / len(vals)
+            
+        # Return best landmarks for visualizer (Orig preferred, fallback to last)
+        final_lms = best_landmarks if best_landmarks else (self._analyze_single_pass(original)[1] or [])
+        
+        return {
+            "features": avg_features,
+            "landmarks": final_lms
+        }
+
+    def _analyze_single_pass(self, image: np.ndarray):
+        """Helper to run MP and compute features for one image variant."""
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         detection_result = self.landmarker.detect(mp_image)
         
         if not detection_result.face_landmarks:
-            return None
+            return None, None
             
-        landmarks_raw = detection_result.face_landmarks[0] # List[NormalizedLandmark]
+        landmarks_raw = detection_result.face_landmarks[0]
         h, w, _ = image.shape
-        
-        # Convert to numpy Dict
         points = {k: np.array([landmarks_raw[v].x * w, landmarks_raw[v].y * h, landmarks_raw[v].z * w]) for k, v in LANDMARKS.items()}
         
-        # --- MEASUREMENT LAYER ---
         features = {}
         features["symmetry"] = self._compute_symmetry(landmarks_raw, w, h)
         features["proportions"] = self._compute_proportions(points)
         features["golden_ratio"] = self._compute_golden_ratio(points)
         features["angles"] = self._compute_angles(points)
         features["balance"] = self._compute_balance(points)
-        features["distinctiveness"] = self._compute_distinctiveness(points) # NEW: Structured Distinctiveness
-
-        # Output structure
-        lm_list = [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in landmarks_raw]
+        features["distinctiveness"] = self._compute_distinctiveness(points)
         
-        return {
-            "features": features,
-            "landmarks": lm_list
-        }
+        lm_list = [{"x": lm.x, "y": lm.y, "z": lm.z} for lm in landmarks_raw]
+        return features, lm_list
 
     # --- GEOMETRIC FEATURE COMPUTATION ---
 

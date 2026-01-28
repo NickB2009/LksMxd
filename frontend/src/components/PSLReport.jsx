@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Activity, Layout, GitMerge, Zap, Scale, ChevronDown, ChevronUp, ShieldAlert, Sparkles, Binary } from 'lucide-react';
+import { Activity, Layout, GitMerge, Zap, Scale, ChevronDown, ChevronUp, ShieldAlert, Sparkles, Binary, Link as LinkIcon } from 'lucide-react';
 import ScoreGauge from './ScoreGauge';
 
 export default function PSLReport({ data }) {
@@ -90,11 +90,11 @@ export default function PSLReport({ data }) {
                             desc="Reward for structured, coherent distinctiveness (Model Tier)."
                         />
                         <ContributorRow
-                            label="Chaos Penalty"
-                            value={explanations["Chaos Penalty"]}
-                            icon={ShieldAlert}
-                            color="hsl(0, 80%, 60%)"
-                            desc="Reduction applied for distinctiveness lacking structural coherence."
+                            label="Coherence Gate"
+                            value={explanations["Coherence Factor"]}
+                            icon={LinkIcon}
+                            color="hsl(160, 80%, 40%)"
+                            desc="Multiplier enforcing agreement between Harmony and Expressiveness."
                         />
                     </div>
                 </div>

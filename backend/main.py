@@ -60,10 +60,15 @@ async def analyze_face(file: UploadFile = File(...)):
         # 3. Construct Response
         return {
             "harmony": {
-                "score": round(inference_result["harmony_score"] * 100, 1), # Scale to 0-100 for UI
+                "score": round(inference_result["harmony_score"] * 100, 1), 
+                "dual": {
+                    "natural": round(inference_result["dual_scores"]["natural"] * 100, 1),
+                    "expressive": round(inference_result["dual_scores"]["expressive"] * 100, 1),
+                    "chaos": round(inference_result["dual_scores"]["chaos"] * 100, 1)
+                },
                 "explanations": inference_result["explanations"]
             },
-            "features": features, # Raw normalized features for debug/details
+            "features": features, 
             "landmarks": landmarks
         }
 

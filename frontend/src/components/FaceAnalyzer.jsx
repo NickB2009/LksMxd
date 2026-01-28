@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
-import { Upload, Loader2, RefreshCw, Bug, Microscope } from 'lucide-react';
-import MorphologyReport from './MorphologyReport';
+import { Upload, Loader2, RefreshCw } from 'lucide-react';
+import PSLReport from './PSLReport';
 
 export default function FaceAnalyzer() {
     const [image, setImage] = useState(null);
@@ -31,13 +31,23 @@ export default function FaceAnalyzer() {
         try {
             const res = await fetch('http://localhost:8000/debug/calibration');
             const data = await res.json();
-            calibrationLandmarksRef.current = data.analysis.landmarks;
-            setAnalysisData(data.analysis);
+            // Backend sends { image_url, harmony: {}, features: {}, landmarks: [] }
+            // API wrapper might wrap it in 'analysis' key or return directly. 
+            // backend/main.py returns direct dict for /debug/calibration, but for /analyze it puts it in "analysis" key? 
+            // Wait, checking main.py again... /analyze returns { "harmony":... } directly? 
+            // NO, /analyze in my previous edit returns { "harmony": ..., "features": ..., "landmarks": ... } directly.
+            // But main.py code shows: return { "analysis": morphology_data } in previous version, 
+            // BUT I CHANGED IT TO return { "harmony": ..., ... } directly in Integration step.
+            // So faceAnalyzer expects data directly. Let's correct frontend accordingly.
+
+            calibrationLandmarksRef.current = data.landmarks;
+            setAnalysisData(data); // Store full response
             setImage(data.image_url);
             setDebugMode(true);
         } catch (e) {
             console.error(e);
             alert("Calibration failed");
+        } finally {
             setAnalyzing(false);
         }
     };
@@ -71,13 +81,13 @@ export default function FaceAnalyzer() {
             }
 
             const data = await response.json();
-            setAnalysisData(data.analysis);
+            // Expected: { harmony: {...}, features: {...}, landmarks: [...] }
+            setAnalysisData(data);
 
             // Use Backend Landmarks for perfect visualization alignment
-            if (data.analysis.landmarks) {
-                setLandmarks(data.analysis.landmarks);
-                // Slight delay to ensure canvas is ready if needed, but synchronous call usually works
-                requestAnimationFrame(() => drawLandmarks(data.analysis.landmarks));
+            if (data.landmarks) {
+                setLandmarks(data.landmarks);
+                requestAnimationFrame(() => drawLandmarks(data.landmarks));
             }
 
         } catch (err) {
@@ -274,7 +284,7 @@ export default function FaceAnalyzer() {
                                     zIndex: 20
                                 }}>
                                     <Loader2 className="animate-spin" size={48} color="hsl(var(--accent-primary))" />
-                                    <span style={{ fontWeight: 500, letterSpacing: '0.05em' }}>COMPUTING MORPHOLOGY...</span>
+                                    <span style={{ fontWeight: 500, letterSpacing: '0.05em' }}>COMPUTING PSL HARMONY...</span>
                                 </div>
                             )}
                         </div>
@@ -289,7 +299,7 @@ export default function FaceAnalyzer() {
             </div>
 
             {analysisData && (
-                <MorphologyReport data={analysisData} />
+                <PSLReport data={analysisData} />
             )}
         </div>
     );

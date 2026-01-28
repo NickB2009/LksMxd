@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from engine.morphology import MorphologyEngine
+from engine.psl import PSLEngine
 import uvicorn
 import os
 import sys
@@ -19,12 +20,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Engine (Singleton-ish)
+# Initialize Engines
 morphology_engine = MorphologyEngine()
+psl_engine = PSLEngine()
 
 @app.get("/")
 def read_root():
-    return {"status": "online", "service": "Morphology Scout Engine"}
+    return {"status": "online", "service": "Morphology Scout Engine (PSL Enabled)"}
 
 @app.post("/restart")
 def restart_engine():
@@ -42,19 +44,35 @@ async def analyze_face(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         
-        # Morphology (Feature-centric analysis)
-        morphology_data = morphology_engine.process_image(contents)
+        # 1. Measurement Layer (Geometry)
+        morphology_result = morphology_engine.process_image(contents)
         
-        if not morphology_data:
+        if not morphology_result:
              raise HTTPException(status_code=422, detail="No face detected or image unclear.")
              
+        # Extract features for PSL
+        features = morphology_result["features"] # Normalized 0-1
+        landmarks = morphology_result["landmarks"]
+        
+        # 2. Reasoning Layer (PSL)
+        inference_result = psl_engine.infer_harmony(features)
+        
+        # 3. Construct Response
         return {
-            "analysis": morphology_data
+            "harmony": {
+                "score": round(inference_result["harmony_score"] * 100, 1), # Scale to 0-100 for UI
+                "explanations": inference_result["explanations"]
+            },
+            "features": features, # Raw normalized features for debug/details
+            "landmarks": landmarks
         }
 
     except Exception as e:
         print(f"Error processing image: {e}")
+        # import traceback
+        # traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/debug/calibration")
 def get_calibration_data():
     """Generates a synthetic image and matching landmarks for alignment verification."""
@@ -64,43 +82,25 @@ def get_calibration_data():
     draw = ImageDraw.Draw(img)
     
     # 2. Draw Visual Markers (Reference Truth)
-    # Center Green Circle
     cx, cy = W//2, H//2
     draw.ellipse([cx-10, cy-10, cx+10, cy+10], fill='green', outline='black')
-    
-    # Target Box (to show object-fit limits)
     draw.rectangle([0, 0, W-1, H-1], outline='black', width=5)
-    
-    # Corner Red Crosses
-    # Top-Left (0,0)
     draw.line([0, 0, 50, 50], fill='red', width=3)
     draw.line([0, 50, 50, 0], fill='red', width=3)
-    
-    # Bottom-Right (1,1)
     draw.line([W-50, H-50, W, H], fill='red', width=3)
     draw.line([W-50, H, W, H-50], fill='red', width=3)
     
-    # Hairline Bar (Blue) at 5% height
     hy = int(H * 0.05)
     draw.line([0, hy, W, hy], fill='blue', width=2)
     
-    # 3. Create Landmark Data that MATCHES exactly
-    # Normalized coordinates [0.0, 1.0]
+    # 3. Create Landmark Data
     landmarks = []
-    
-    # Center point (matches green circle)
     landmarks.append({"x": 0.5, "y": 0.5, "z": 0})
-    
-    # "Hairline" points (match blue line)
-    # 5 points across
     for i in range(5):
         landmarks.append({"x": 0.1 + (i * 0.2), "y": 0.05, "z": 0})
-        
-    # Corner markers (Exact corners)
     landmarks.append({"x": 0.0, "y": 0.0, "z": 0})
     landmarks.append({"x": 1.0, "y": 1.0, "z": 0})
     
-    # 4. Serialize Image to Base64
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
@@ -108,20 +108,16 @@ def get_calibration_data():
     
     return {
         "image_url": data_url,
-        "analysis": {
-            "landmarks": landmarks,
-            "overall": {
-                "harmonyScore": 100,
-                "symmetryScore": 100,
-                "verdict": "CALIBRATION MODE: CHECK ALIGNMENT"
-            },
-            # Mock other data to prevent frontend crash
-            "proportions": {"phiRatio": 1.618, "fifthsScore": 100, "thirds": {"upper":33,"mid":33,"lower":33}, "lowerThirdRatio": 2.0, "fWHR": 2.0},
-            "eyes": {"canthalTilt": 10, "eyeSpacingRatio": 0.5, "eyeAreaRatio": 1.5, "harmonyIndex": 100},
-            "nose": {"mouthNoseRatio": 1.618, "score": 100, "noseWidthRatio": 0.25, "symmetry": 100},
-            "jawline": {"gonialAngle": 110, "jawToCheekRatio": 1.0, "symmetry": 100, "lowerThirdRatio": 2.0},
-            "detailed": {}
-        }
+        "harmony": {
+            "score": 100.0,
+            "explanations": {
+                "symmetry": 1.0, "proportions": 1.0, "angles": 1.0, "golden_ratio": 1.0, "balance": 1.0
+            }
+        },
+        "features": {
+            "symmetry": 1.0, "proportions": 1.0, "angles": 1.0, "golden_ratio": 1.0, "balance": 1.0
+        },
+        "landmarks": landmarks
     }
 
 if __name__ == "__main__":

@@ -36,13 +36,31 @@ class PSLEngine:
         )
         
         # 2. Coherence Constraint
-        # Penalize if H and E diverge too much.
-        # "Expressiveness without harmony feels wrong"
-        h_e_diff = abs(h_score - e_score)
-        coherence = np.exp(-3.0 * h_e_diff)
+        # Asymmetric Logic:
+        # If E > H (Expressiveness exceeds basic Structure), risk of Alien/Deformity. Strict penalty.
+        # If H > E (Structure exceeds Expressiveness), risk of Dullness. Lenient penalty (or none).
+        
+        diff = e_score - h_score
+        
+        if diff > 0:
+            # Chaos Risk: Expressive but not Harmonic
+            # e.g. E=0.8, H=0.4 -> diff 0.4 -> exp(-3*0.4) = 0.3
+            coherence = np.exp(-3.0 * diff)
+        else:
+            # Dullness Risk: Harmonic but not Expressive
+            # e.g. H=0.8, E=0.0 -> diff -0.8.
+            # We don't want to punish "Good Structure" too much. 
+            # Use a very light penalty or none (e.g., 1.0).
+            # Let's use slight decay to encourage *some* expressiveness for 100/100.
+            coherence = np.exp(-0.2 * abs(diff))
         
         # 3. Attractiveness (A)
         # Base weighted combination gated by Coherence
+        # Note: If E is 0 (Average), A becomes approx 0.55 * H. 
+        # For H=0.8, A=0.44. Scored 44/100. 
+        # To align with "Average = 55-65", we might need to scale the result.
+        # However, following valid logic:
+        # A = (0.55 H + 0.45 E) * C
         a_score = (0.55 * h_score + 0.45 * e_score) * coherence
         
         # 4. Hard Cap for Unbalanced Modes

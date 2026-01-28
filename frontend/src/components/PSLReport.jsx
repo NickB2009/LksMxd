@@ -56,12 +56,15 @@ export default function PSLReport({ data }) {
                     background: 'linear-gradient(135deg, hsla(var(--bg-panel), 0.5), hsla(var(--accent-primary), 0.05))'
                 }}>
                     <ScoreGauge value={score} ideal={85} label="Global Composite" size={180} />
-                    <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-                        <div style={{ fontWeight: 600, fontSize: '1.2rem' }}>
-                            {score >= 85 ? 'Exceptional' :
-                                score >= 70 ? 'High' :
-                                    score >= 50 ? 'Moderate' : 'Low'}
-                        </div>
+                    <div style={{ textAlign: 'center', maxWidth: '600px' }}>
+                        <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>
+                            {score >= 75 ? 'Exceptional Structured Harmony' :
+                                score >= 60 ? 'High Natural Harmony' :
+                                    score >= 45 ? 'Moderate Harmony' : 'Developing Harmony'}
+                        </h2>
+                        <p className="text-muted">
+                            Composite score derived from Natural Consistency and Expressive Distinctiveness.
+                        </p>
                     </div>
                 </div>
             </div>

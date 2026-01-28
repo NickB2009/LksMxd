@@ -64,7 +64,7 @@ async def analyze_face(file: UploadFile = File(...)):
                 "dual": {
                     "natural": round(inference_result["dual_scores"]["natural"] * 100, 1),
                     "expressive": round(inference_result["dual_scores"]["expressive"] * 100, 1),
-                    "chaos": round(inference_result["dual_scores"]["chaos"] * 100, 1)
+                    "coherence": round(inference_result["dual_scores"]["coherence"] * 100, 1)
                 },
                 "explanations": inference_result["explanations"]
             },
